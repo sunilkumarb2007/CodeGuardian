@@ -202,7 +202,7 @@ function normalizeInvestigation(record: JsonRecord | undefined): Investigation |
     confidence: readNumber(record, 'confidence', 'confidence_score', 'score'),
     findings,
     evidence: readStringList(record, 'evidence', 'evidence_points', 'signals'),
-    sources: readStringList(record, 'sources', 'inputs', 'context_sources'),
+    sources: readStringList(record, 'sources', 'affected_files', 'inputs', 'context_sources'),
   }
 }
 
@@ -479,7 +479,22 @@ export function normalizeWorkspace(payload: unknown): Run | undefined {
 
   const patch = normalizePatch(readRecord(workspace, 'patch'))
   const changedFiles = readRecordList(workspace, 'changed_files').map(normalizeChangedFile)
+  const compatibility = normalizeCompatibility(readRecord(workspace, 'compatibility'))
+  const deliveryRecord = readRecord(workspace, 'delivery')
+  const delivery = normalizeDelivery(
+    deliveryRecord && Object.keys(deliveryRecord).length > 0 ? deliveryRecord : undefined,
+  )
+  if (delivery) {
+    delivery.repository = delivery.repository ?? repository?.url ?? repository?.name
+  }
+  const compatibilityCheck = (label: string): string | undefined =>
+    compatibility?.checks.find((check) => check.label.toLowerCase() === label)?.value
+
   if (patch) {
+    patch.file = patch.file ?? patch.affectedFiles[0] ?? changedFiles[0]?.path
+    patch.pathSafety = patch.pathSafety ?? compatibilityCheck('path safety')
+    patch.languageCompatibility = patch.languageCompatibility ?? compatibilityCheck('language')
+    patch.contextMatch = patch.contextMatch ?? compatibilityCheck('source context')
     patch.filesChanged = patch.filesChanged ?? changedFiles.length
     patch.linesAdded =
       patch.linesAdded ?? changedFiles.reduce((total, file) => total + (file.additions ?? 0), 0)
@@ -509,7 +524,7 @@ export function normalizeWorkspace(payload: unknown): Run | undefined {
     stackTrace: normalizeStackTrace(readRecord(workspace, 'stack_trace')),
     sourceFiles: readRecordList(workspace, 'source').map(normalizeSourceFile),
     changedFiles,
-    compatibility: normalizeCompatibility(readRecord(workspace, 'compatibility')),
+    compatibility,
     build: normalizeCommandResult(readRecord(workspace, 'build')),
     tests: normalizeCommandResult(readRecord(workspace, 'tests')),
     memory: normalizeMemory({
@@ -520,7 +535,12 @@ export function normalizeWorkspace(payload: unknown): Run | undefined {
     patch,
     replay: normalizeReplay(readRecord(workspace, 'replay')),
     validation: normalizeWorkspaceValidation(readRecord(workspace, 'validation')),
-    delivery: normalizeDelivery(readRecord(workspace, 'delivery')),
-    memoryUpdate: normalizeMemoryUpdate(readRecord(workspace, 'memory_update')),
+    delivery,
+    memoryUpdate: normalizeMemoryUpdate(
+      (() => {
+        const record = readRecord(workspace, 'memory_update')
+        return record && Object.keys(record).length > 0 ? record : undefined
+      })(),
+    ),
   }
 }

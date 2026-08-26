@@ -349,6 +349,9 @@ export function DeliveryPanel({ delivery }: { delivery?: Delivery }) {
               Pull request
             </p>
             <p className="display-md mt-3">{delivery.pullRequestRef ?? 'NOT REPORTED'}</p>
+            {delivery.note ? (
+              <p className="mt-4 text-sm font-medium text-ink-900/70">{delivery.note}</p>
+            ) : null}
             {delivery.pullRequestUrl ? (
               <a
                 className="mt-6 inline-flex items-center gap-2 rounded-pill border-2 border-ink-900 px-6 py-3 font-display font-semibold"

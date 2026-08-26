@@ -190,7 +190,11 @@ export function SourcePanel({
   investigation?: Investigation
 }) {
   const [activeId, setActiveId] = useState<string | undefined>(undefined)
-  const active = files.find((file) => file.id === activeId) ?? files[0]
+  const primary =
+    files.find((file) => investigation?.sources.some((source) => file.path.endsWith(source))) ??
+    files.find((file) => file.content && file.content.length > 0) ??
+    files[0]
+  const active = files.find((file) => file.id === activeId) ?? primary
 
   return (
     <Card>
