@@ -58,10 +58,11 @@ def get_run_state(run_id: str):
 
 
 @router.post("/{run_id}/approve")
-def approve_run(run_id: str):
+def approve_run(run_id: str, background_tasks: BackgroundTasks):
     try:
         demo_runner.approve_and_continue(run_id)
-        return {"status": "success"}
+        background_tasks.add_task(demo_runner.continue_after_approval, run_id)
+        return {"status": "success", "message": "Approved. Delivery in progress."}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -76,13 +77,17 @@ def reject_run(run_id: str):
 
 
 @router.post("/{run_id}/changed-files/{file_id}/accept")
-def accept_file(run_id: str, file_id: str):
-    # Mock file accept
-    return {"status": "accepted", "file_id": file_id}
+def accept_file(run_id: str, file_id: str, db: Session = Depends(get_db)):
+    try:
+        return demo_runner.record_file_decision(run_id, file_id, "accepted", db)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.post("/{run_id}/changed-files/{file_id}/reject")
-def reject_file(run_id: str, file_id: str):
-    # Mock file reject
-    return {"status": "rejected", "file_id": file_id}
+def reject_file(run_id: str, file_id: str, db: Session = Depends(get_db)):
+    try:
+        return demo_runner.record_file_decision(run_id, file_id, "rejected", db)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 

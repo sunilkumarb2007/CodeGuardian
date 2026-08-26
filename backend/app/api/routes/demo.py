@@ -1,8 +1,10 @@
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 import uuid
 import logging
 from typing import Dict, Any, Optional
+from app.db.database import get_db
 from app.demo.demo_runner import DemoRunner
 
 router = APIRouter()
@@ -59,8 +61,8 @@ def get_run_result(run_id: str):
 def approve_run(run_id: str, background_tasks: BackgroundTasks):
     try:
         runner.approve_and_continue(run_id)
-        # Continue in background
-        background_tasks.add_task(runner.execute_async, run_id)
+        # Delivery + memory update continue in the background
+        background_tasks.add_task(runner.continue_after_approval, run_id)
         return {"status": "success", "message": "Run approved, continuing delivery"}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -74,7 +76,6 @@ def reject_run(run_id: str):
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/reset", response_model=DemoResetResponse)
-def reset_demo():
-    from app.demo.demo_runner import DEMO_STATE_STORE
-    DEMO_STATE_STORE.clear()
-    return DemoResetResponse(status="success", message="Demo state reset.")
+def reset_demo(db: Session = Depends(get_db)):
+    removed = runner.reset(db)
+    return DemoResetResponse(status="success", message=f"Demo state reset. {removed} run(s) removed.")

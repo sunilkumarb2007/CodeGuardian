@@ -131,4 +131,30 @@ VALUES ('88888888-8888-8888-8888-888888888888', 'd2a57169-6136-4cc7-83c6-3e21291
 INSERT INTO validation_runs (id, incident_id, patch_id, build_passed, tests_passed, replay_passed, validation_summary, status, created_at)
 VALUES ('66666666-6666-6666-6666-666666666666', 'd2a57169-6136-4cc7-83c6-3e21291cb14d', '4cf61f48-7700-430a-8a06-ce0ea5af68f7', true, true, true, 'Patch validated successfully.', 'passed', '2026-08-26T08:05:10.699105+00:00');
 
+
+-- Failure signal detail for the observable evidence events (error, stack trace, HTTP response).
+UPDATE evidence_events
+SET error_code = 'NULL_OBJECT_ACCESS',
+    error_message = 'java.lang.NullPointerException: Cannot invoke "PaymentRecord.getAmount()" because "paymentRecord" is null',
+    endpoint = '/payments/charge',
+    http_method = 'POST',
+    status_code = 500
+WHERE id IN ('088eec8b-8e5c-4504-896c-8a7e9f21b4b5', 'ad5b6a87-c965-4d84-9d8f-4a2aab4d37c2');
+
+UPDATE evidence_events
+SET status_code = 500,
+    endpoint = '/payments/charge',
+    http_method = 'POST'
+WHERE id = '660926f1-825a-495a-a559-e81e33aafb98';
+
+UPDATE evidence_events
+SET error_code = 'NULL_OBJECT_ACCESS',
+    stack_trace = 'java.lang.NullPointerException: Cannot invoke "PaymentRecord.getAmount()" because "paymentRecord" is null
+	at com.codeguardian.paymentservice.PaymentProcessingService.charge(PaymentProcessingService.java:42)
+	at com.codeguardian.paymentservice.PaymentController.charge(PaymentController.java:28)
+	at org.springframework.web.method.support.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:205)
+	at org.springframework.web.servlet.DispatcherServlet.doDispatch(DispatcherServlet.java:1072)
+	at java.base/java.lang.Thread.run(Thread.java:840)'
+WHERE id = '379b1386-04fb-4cef-bb92-b7630471890d';
+
 COMMIT;
