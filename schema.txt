@@ -1,0 +1,295 @@
+Found 17 tables: ['applications', 'repositories', 'repository_files', 'incidents', 'evidence_events', 'failure_traces', 'failure_trace_nodes', 'failure_trace_edges', 'investigations', 'failure_memories', 'memory_matches', 'patches', 'validation_runs', 'repair_attempts', 'replay_runs', 'pull_requests', 'incident_status_history']
+
+
+TABLE: applications
+  - id: UUID (Nullable: False)
+  - name: VARCHAR(150) (Nullable: False)
+  - description: TEXT (Nullable: True)
+  - environment: VARCHAR(50) (Nullable: False)
+  - repository_url: TEXT (Nullable: True)
+  - status: VARCHAR(30) (Nullable: False)
+  - created_at: TIMESTAMP (Nullable: False)
+  - updated_at: TIMESTAMP (Nullable: False)
+  - PK: ['id']
+
+TABLE: repositories
+  - id: UUID (Nullable: False)
+  - application_id: UUID (Nullable: False)
+  - provider: VARCHAR(30) (Nullable: False)
+  - owner: VARCHAR(150) (Nullable: False)
+  - name: VARCHAR(200) (Nullable: False)
+  - repository_url: TEXT (Nullable: False)
+  - default_branch: VARCHAR(100) (Nullable: False)
+  - access_status: VARCHAR(30) (Nullable: False)
+  - created_at: TIMESTAMP (Nullable: False)
+  - updated_at: TIMESTAMP (Nullable: False)
+  - PK: ['id']
+  - FK: ['application_id'] -> applications.['id']
+
+TABLE: repository_files
+  - id: UUID (Nullable: False)
+  - repository_id: UUID (Nullable: False)
+  - file_path: TEXT (Nullable: False)
+  - language: VARCHAR(50) (Nullable: True)
+  - file_hash: VARCHAR(128) (Nullable: True)
+  - source_snapshot: TEXT (Nullable: True)
+  - created_at: TIMESTAMP (Nullable: False)
+  - updated_at: TIMESTAMP (Nullable: False)
+  - PK: ['id']
+  - FK: ['repository_id'] -> repositories.['id']
+
+TABLE: incidents
+  - id: UUID (Nullable: False)
+  - incident_number: BIGINT (Nullable: False)
+  - application_id: UUID (Nullable: False)
+  - repository_id: UUID (Nullable: True)
+  - title: VARCHAR(255) (Nullable: False)
+  - description: TEXT (Nullable: True)
+  - endpoint: VARCHAR(500) (Nullable: True)
+  - http_method: VARCHAR(20) (Nullable: True)
+  - observed_status_code: INTEGER (Nullable: True)
+  - symptom_service: VARCHAR(150) (Nullable: True)
+  - root_cause_service: VARCHAR(150) (Nullable: True)
+  - root_cause_summary: TEXT (Nullable: True)
+  - error_fingerprint: VARCHAR(255) (Nullable: True)
+  - request_id: VARCHAR(255) (Nullable: True)
+  - first_seen_at: TIMESTAMP (Nullable: True)
+  - last_seen_at: TIMESTAMP (Nullable: True)
+  - status: VARCHAR(40) (Nullable: False)
+  - resolution_status: VARCHAR(40) (Nullable: False)
+  - created_at: TIMESTAMP (Nullable: False)
+  - updated_at: TIMESTAMP (Nullable: False)
+  - PK: ['id']
+  - FK: ['application_id'] -> applications.['id']
+  - FK: ['repository_id'] -> repositories.['id']
+
+TABLE: evidence_events
+  - id: UUID (Nullable: False)
+  - incident_id: UUID (Nullable: False)
+  - service_name: VARCHAR(150) (Nullable: True)
+  - event_type: VARCHAR(50) (Nullable: False)
+  - timestamp: TIMESTAMP (Nullable: False)
+  - request_id: VARCHAR(255) (Nullable: True)
+  - endpoint: VARCHAR(500) (Nullable: True)
+  - http_method: VARCHAR(20) (Nullable: True)
+  - status_code: INTEGER (Nullable: True)
+  - error_code: VARCHAR(100) (Nullable: True)
+  - error_message: TEXT (Nullable: True)
+  - stack_trace: TEXT (Nullable: True)
+  - source: VARCHAR(100) (Nullable: True)
+  - metadata: JSONB (Nullable: False)
+  - raw_payload: JSONB (Nullable: True)
+  - created_at: TIMESTAMP (Nullable: False)
+  - PK: ['id']
+  - FK: ['incident_id'] -> incidents.['id']
+
+TABLE: failure_traces
+  - id: UUID (Nullable: False)
+  - incident_id: UUID (Nullable: False)
+  - trace_version: INTEGER (Nullable: False)
+  - symptom_service: VARCHAR(150) (Nullable: True)
+  - root_cause_candidate: VARCHAR(150) (Nullable: True)
+  - confidence: NUMERIC(5, 4) (Nullable: True)
+  - reasoning_summary: TEXT (Nullable: True)
+  - correlation_method: JSONB (Nullable: False)
+  - created_at: TIMESTAMP (Nullable: False)
+  - PK: ['id']
+  - FK: ['incident_id'] -> incidents.['id']
+
+TABLE: failure_trace_nodes
+  - id: UUID (Nullable: False)
+  - failure_trace_id: UUID (Nullable: False)
+  - sequence_number: INTEGER (Nullable: False)
+  - service_name: VARCHAR(150) (Nullable: False)
+  - endpoint: VARCHAR(500) (Nullable: True)
+  - status_code: INTEGER (Nullable: True)
+  - error_message: TEXT (Nullable: True)
+  - node_type: VARCHAR(40) (Nullable: True)
+  - evidence_ids: ARRAY (Nullable: True)
+  - created_at: TIMESTAMP (Nullable: False)
+  - PK: ['id']
+  - FK: ['failure_trace_id'] -> failure_traces.['id']
+
+TABLE: failure_trace_edges
+  - id: UUID (Nullable: False)
+  - failure_trace_id: UUID (Nullable: False)
+  - from_node_id: UUID (Nullable: False)
+  - to_node_id: UUID (Nullable: False)
+  - relationship_type: VARCHAR(50) (Nullable: False)
+  - correlation_strength: NUMERIC(5, 4) (Nullable: True)
+  - evidence_ids: ARRAY (Nullable: True)
+  - created_at: TIMESTAMP (Nullable: False)
+  - PK: ['id']
+  - FK: ['failure_trace_id'] -> failure_traces.['id']
+  - FK: ['from_node_id'] -> failure_trace_nodes.['id']
+  - FK: ['to_node_id'] -> failure_trace_nodes.['id']
+
+TABLE: investigations
+  - id: UUID (Nullable: False)
+  - incident_id: UUID (Nullable: False)
+  - failure_trace_id: UUID (Nullable: True)
+  - model_provider: VARCHAR(50) (Nullable: True)
+  - model_name: VARCHAR(100) (Nullable: True)
+  - investigation_type: VARCHAR(50) (Nullable: False)
+  - root_cause: TEXT (Nullable: True)
+  - explanation: TEXT (Nullable: True)
+  - affected_files: JSONB (Nullable: False)
+  - affected_lines: JSONB (Nullable: False)
+  - proposed_fix: TEXT (Nullable: True)
+  - evidence_summary: TEXT (Nullable: True)
+  - memory_used: BOOLEAN (Nullable: False)
+  - confidence: NUMERIC(5, 4) (Nullable: True)
+  - raw_response: JSONB (Nullable: True)
+  - status: VARCHAR(40) (Nullable: False)
+  - created_at: TIMESTAMP (Nullable: False)
+  - updated_at: TIMESTAMP (Nullable: False)
+  - PK: ['id']
+  - FK: ['failure_trace_id'] -> failure_traces.['id']
+  - FK: ['incident_id'] -> incidents.['id']
+
+TABLE: failure_memories
+  - id: UUID (Nullable: False)
+  - incident_id: UUID (Nullable: False)
+  - application_id: UUID (Nullable: False)
+  - error_pattern: TEXT (Nullable: False)
+  - error_fingerprint: VARCHAR(255) (Nullable: True)
+  - root_cause: TEXT (Nullable: False)
+  - affected_files: JSONB (Nullable: False)
+  - code_change: TEXT (Nullable: True)
+  - patch_summary: TEXT (Nullable: True)
+  - validation_result: JSONB (Nullable: True)
+  - pull_request_history: JSONB (Nullable: True)
+  - searchable_text: TEXT (Nullable: False)
+  - memory_status: VARCHAR(30) (Nullable: False)
+  - created_at: TIMESTAMP (Nullable: False)
+  - updated_at: TIMESTAMP (Nullable: False)
+  - PK: ['id']
+  - FK: ['application_id'] -> applications.['id']
+  - FK: ['incident_id'] -> incidents.['id']
+
+TABLE: memory_matches
+  - id: UUID (Nullable: False)
+  - incident_id: UUID (Nullable: False)
+  - memory_id: UUID (Nullable: False)
+  - similarity_score: NUMERIC(5, 4) (Nullable: True)
+  - match_reason: TEXT (Nullable: True)
+  - matched_error_pattern: BOOLEAN (Nullable: False)
+  - matched_root_cause: BOOLEAN (Nullable: False)
+  - matched_affected_files: BOOLEAN (Nullable: False)
+  - matched_code_context: BOOLEAN (Nullable: False)
+  - verification_status: VARCHAR(40) (Nullable: False)
+  - created_at: TIMESTAMP (Nullable: False)
+  - PK: ['id']
+  - FK: ['incident_id'] -> incidents.['id']
+  - FK: ['memory_id'] -> failure_memories.['id']
+
+TABLE: patches
+  - id: UUID (Nullable: False)
+  - incident_id: UUID (Nullable: False)
+  - investigation_id: UUID (Nullable: True)
+  - memory_match_id: UUID (Nullable: True)
+  - patch_number: INTEGER (Nullable: False)
+  - branch_name: VARCHAR(255) (Nullable: True)
+  - commit_message: TEXT (Nullable: True)
+  - diff: TEXT (Nullable: False)
+  - affected_files: JSONB (Nullable: False)
+  - generation_reason: TEXT (Nullable: True)
+  - status: VARCHAR(40) (Nullable: False)
+  - generated_by: VARCHAR(50) (Nullable: False)
+  - created_at: TIMESTAMP (Nullable: False)
+  - updated_at: TIMESTAMP (Nullable: False)
+  - PK: ['id']
+  - FK: ['incident_id'] -> incidents.['id']
+  - FK: ['investigation_id'] -> investigations.['id']
+  - FK: ['memory_match_id'] -> memory_matches.['id']
+
+TABLE: validation_runs
+  - id: UUID (Nullable: False)
+  - incident_id: UUID (Nullable: False)
+  - patch_id: UUID (Nullable: False)
+  - build_passed: BOOLEAN (Nullable: True)
+  - tests_passed: BOOLEAN (Nullable: True)
+  - replay_passed: BOOLEAN (Nullable: True)
+  - original_failure_reproduced: BOOLEAN (Nullable: True)
+  - repair_verified: BOOLEAN (Nullable: True)
+  - exit_code: INTEGER (Nullable: True)
+  - build_output: TEXT (Nullable: True)
+  - test_output: TEXT (Nullable: True)
+  - replay_output: TEXT (Nullable: True)
+  - validation_summary: TEXT (Nullable: True)
+  - status: VARCHAR(40) (Nullable: False)
+  - started_at: TIMESTAMP (Nullable: True)
+  - completed_at: TIMESTAMP (Nullable: True)
+  - created_at: TIMESTAMP (Nullable: False)
+  - PK: ['id']
+  - FK: ['incident_id'] -> incidents.['id']
+  - FK: ['patch_id'] -> patches.['id']
+
+TABLE: repair_attempts
+  - id: UUID (Nullable: False)
+  - incident_id: UUID (Nullable: False)
+  - patch_id: UUID (Nullable: True)
+  - validation_run_id: UUID (Nullable: True)
+  - attempt_number: INTEGER (Nullable: False)
+  - failure_reason: TEXT (Nullable: True)
+  - repair_action: TEXT (Nullable: True)
+  - status: VARCHAR(40) (Nullable: False)
+  - created_at: TIMESTAMP (Nullable: False)
+  - PK: ['id']
+  - FK: ['incident_id'] -> incidents.['id']
+  - FK: ['patch_id'] -> patches.['id']
+  - FK: ['validation_run_id'] -> validation_runs.['id']
+
+TABLE: replay_runs
+  - id: UUID (Nullable: False)
+  - incident_id: UUID (Nullable: False)
+  - patch_id: UUID (Nullable: True)
+  - replay_type: VARCHAR(30) (Nullable: False)
+  - endpoint: VARCHAR(500) (Nullable: True)
+  - http_method: VARCHAR(20) (Nullable: True)
+  - expected_status_code: INTEGER (Nullable: True)
+  - actual_status_code: INTEGER (Nullable: True)
+  - expected_behavior: TEXT (Nullable: True)
+  - actual_behavior: TEXT (Nullable: True)
+  - reproduced_failure: BOOLEAN (Nullable: True)
+  - execution_output: TEXT (Nullable: True)
+  - environment: JSONB (Nullable: False)
+  - status: VARCHAR(40) (Nullable: False)
+  - started_at: TIMESTAMP (Nullable: True)
+  - completed_at: TIMESTAMP (Nullable: True)
+  - created_at: TIMESTAMP (Nullable: False)
+  - PK: ['id']
+  - FK: ['incident_id'] -> incidents.['id']
+  - FK: ['patch_id'] -> patches.['id']
+
+TABLE: pull_requests
+  - id: UUID (Nullable: False)
+  - incident_id: UUID (Nullable: False)
+  - patch_id: UUID (Nullable: False)
+  - repository_id: UUID (Nullable: False)
+  - provider: VARCHAR(30) (Nullable: False)
+  - branch_name: VARCHAR(255) (Nullable: False)
+  - base_branch: VARCHAR(255) (Nullable: False)
+  - external_pr_number: INTEGER (Nullable: True)
+  - external_pr_url: TEXT (Nullable: True)
+  - title: VARCHAR(255) (Nullable: False)
+  - description: TEXT (Nullable: True)
+  - validation_summary: TEXT (Nullable: True)
+  - status: VARCHAR(40) (Nullable: False)
+  - created_at: TIMESTAMP (Nullable: False)
+  - updated_at: TIMESTAMP (Nullable: False)
+  - PK: ['id']
+  - FK: ['incident_id'] -> incidents.['id']
+  - FK: ['patch_id'] -> patches.['id']
+  - FK: ['repository_id'] -> repositories.['id']
+
+TABLE: incident_status_history
+  - id: UUID (Nullable: False)
+  - incident_id: UUID (Nullable: False)
+  - previous_status: VARCHAR(40) (Nullable: True)
+  - new_status: VARCHAR(40) (Nullable: False)
+  - reason: TEXT (Nullable: True)
+  - metadata: JSONB (Nullable: False)
+  - created_at: TIMESTAMP (Nullable: False)
+  - PK: ['id']
+  - FK: ['incident_id'] -> incidents.['id']
