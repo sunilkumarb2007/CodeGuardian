@@ -154,7 +154,7 @@ class CodeGuardianOrchestrator:
                 })
                 self._update_stage(run_id, "memory", "passed")
                 
-                # 5. AI Investigation
+                # 5. Investigation
                 self._update_stage(run_id, "investigation", "running")
                 self._update_stage(run_id, "patch", "running")
                 inv_svc = InvestigationService(db)

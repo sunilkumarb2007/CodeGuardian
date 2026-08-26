@@ -2,7 +2,7 @@
 
 `JavaAPICheck` is a small, intentionally broken Java Spring Boot microservice demo repository for exercising the CodeGuardian workflow:
 
-`OBSERVE -> GHOSTTRACE -> FAILURE MEMORY -> AI INVESTIGATION -> PATCH -> GHOST REPLAY -> VALIDATION -> GITHUB PULL REQUEST`
+`OBSERVE -> GHOSTTRACE -> FAILURE MEMORY -> INVESTIGATION -> PATCH -> GHOST REPLAY -> VALIDATION -> GITHUB PULL REQUEST`
 
 The payment service intentionally contains a deterministic null-object bug so CodeGuardian can reconstruct and repair the failure.
 
