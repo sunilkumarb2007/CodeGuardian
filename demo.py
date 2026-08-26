@@ -5,7 +5,10 @@ import uuid
 import logging
 from typing import Dict, Any, Optional
 from app.db.database import get_db
+from app.demo import repo_snapshot
 from app.demo.demo_runner import DemoRunner
+
+PREPARED_REPOSITORY_URL = repo_snapshot.REPOSITORY_URL
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -26,16 +29,22 @@ runner = DemoRunner()
 
 @router.post("/run", response_model=DemoRunResponse)
 def start_demo(req: DemoRequest, background_tasks: BackgroundTasks):
-    if req.repository_url != "https://github.com/sunilkumarb2007/JavaAPICheck":
+    if req.repository_url.strip().rstrip("/") != PREPARED_REPOSITORY_URL:
         raise HTTPException(
-            status_code=400, 
+            status_code=400,
             detail={
                 "status": "failed",
                 "stage": "investigation",
                 "error_code": "DEMO_SCENARIO_NOT_AVAILABLE",
-                "message": "No prepared investigation exists for this repository."
+                "title": "PREPARED DEMO NOT AVAILABLE",
+                "message": (
+                    "PREPARED DEMO NOT AVAILABLE. Demo Mode only investigates the prepared "
+                    f"repository {PREPARED_REPOSITORY_URL}."
+                ),
+                "prepared_repository_url": PREPARED_REPOSITORY_URL
             }
         )
+
     
     run_id = str(uuid.uuid4())
     runner.initialize_run(run_id)

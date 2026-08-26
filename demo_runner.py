@@ -7,31 +7,39 @@ from typing import Dict, Any, List, Optional
 from uuid import UUID
 from app.db.database import SessionLocal
 from app.db.models import Application, Repository, RepositoryFile, Incident, EvidenceEvent, FailureTrace, FailureTraceNode, FailureTraceEdge, Investigation, Patch, ReplayRun, ValidationRun, FailureMemory, MemoryMatch, DemoRun, DemoEvent, DemoAction
+from app.demo import repo_snapshot
+from app.demo.agent_script import build_stage_events
+from app.demo.delivery import DeliveryRequest, get_delivery_provider
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
 logger = logging.getLogger(__name__)
 
 DEMO_INCIDENT_ID = "d2a57169-6136-4cc7-83c6-3e21291cb14d"
+DEMO_FEATURE_BRANCH = "feature/codeguardian/null-object-access"
+DEMO_COMMIT_MESSAGE = "fix: guard missing payment record"
 
 STAGES_CONFIG = [
-    ("repository", 0.5),
-    ("inspection", 0.8),
-    ("architecture", 0.7),
-    ("failure_detection", 1.0),
-    ("evidence", 1.0),
-    ("ghosttrace", 1.2),
-    ("memory", 1.0),
-    ("investigation", 1.8),
-    ("patch", 1.2),
-    ("compatibility", 0.8),
-    ("replay", 1.5),
-    ("build", 1.0),
-    ("tests", 1.0),
-    ("validation", 1.2),
+    # (stage, backend hold in seconds). The hold only keeps the run observable;
+    # the visible pacing is driven by the frontend event buffer.
+    ("repository", 0.2),
+    ("inspection", 0.3),
+    ("architecture", 0.2),
+    ("failure_detection", 0.2),
+    ("evidence", 0.2),
+    ("ghosttrace", 0.2),
+    ("memory", 0.2),
+    ("investigation", 0.3),
+    ("patch", 0.2),
+    ("compatibility", 0.2),
+    ("replay", 0.2),
+    ("build", 0.2),
+    ("tests", 0.2),
+    ("validation", 0.2),
     ("approval", 0.0), # wait for human
-    ("delivery", 1.2),
-    ("memory_update", 0.8)
+    ("delivery", 0.2),
+    ("memory_update", 0.2)
 ]
 
 STAGE_LABELS = {
@@ -178,6 +186,7 @@ class DemoRunner:
                 for name, _ in STAGES_CONFIG
             ] + [{"id": "completed", "label": "Completed", "status": stages.get("completed", "pending")}],
             "repository": results.get("repository", {}),
+            "repository_tree": results.get("repository_tree", []),
             "inspection": results.get("inspection", {}),
             "architecture": results.get("architecture", {}),
             "incident": results.get("failure_detection", {}),
@@ -214,6 +223,9 @@ class DemoRunner:
                 "command": e.command,
                 "output": e.output,
                 "status": e.status,
+                "duration_ms": e.duration_ms,
+                "related_file": e.related_file,
+                "next_action": e.next_action,
                 "related_stage": e.related_entity_id
             } for e in events
         ]
@@ -266,15 +278,19 @@ class DemoRunner:
     # ------------------------------------------------------------------
     # Pipeline execution
     # ------------------------------------------------------------------
-    def _run_stages(self, db: Session, run_id: str, stage_names: List[str], start_seq: int):
-        seq = start_seq
+    def _run_stages(self, db: Session, run_id: str, stage_names: List[str]):
+        """Advance the state machine.
+
+        Stage pacing is a presentation concern: the backend only holds a short
+        delay per stage so the run is observable, and the frontend reveals the
+        prepared events over time.
+        """
         for stage_name, delay in STAGES_CONFIG:
             if stage_name not in stage_names:
                 continue
-            seq += 1
             run = db.query(DemoRun).filter(DemoRun.id == run_id).first()
             if not run:
-                return seq
+                return
 
             run.current_stage = stage_name
             ps = self._ps(run)
@@ -285,12 +301,11 @@ class DemoRunner:
 
             run = db.query(DemoRun).filter(DemoRun.id == run_id).first()
             ps = self._ps(run)
-            self._populate_stage_data(ps["results"], stage_name, db)
+            self._populate_stage_data(ps["results"], stage_name, db, run_id)
             ps["stages"][stage_name] = "passed"
             self._write_ps(db, run, ps)
 
-            self._create_stage_events(run_id, stage_name, seq, db)
-        return seq
+            self._create_stage_events(run_id, stage_name, db, ps["results"])
 
     def _mark_completed(self, db: Session, run_id: str):
         run = db.query(DemoRun).filter(DemoRun.id == run_id).first()
@@ -307,7 +322,7 @@ class DemoRunner:
         db = SessionLocal()
         try:
             pre_approval = [s for s, _ in STAGES_CONFIG[:STAGES_CONFIG.index(("approval", 0.0))]]
-            self._run_stages(db, run_id, pre_approval, 0)
+            self._run_stages(db, run_id, pre_approval)
 
             run = db.query(DemoRun).filter(DemoRun.id == run_id).first()
             if not run:
@@ -317,7 +332,7 @@ class DemoRunner:
             ps = self._ps(run)
             ps["stages"]["approval"] = "waiting"
             self._write_ps(db, run, ps)
-            self._create_stage_events(run_id, "approval", len(pre_approval) + 1, db)
+            self._create_stage_events(run_id, "approval", db, ps["results"])
 
         except Exception as e:
             logger.error(f"Demo runner error: {e}")
@@ -358,7 +373,7 @@ class DemoRunner:
             run.delivery_state = "delivering"
             db.commit()
 
-            self._run_stages(db, run_id, ["delivery", "memory_update"], 100)
+            self._run_stages(db, run_id, ["delivery", "memory_update"])
 
             run = db.query(DemoRun).filter(DemoRun.id == run_id).first()
             if run:
@@ -421,103 +436,46 @@ class DemoRunner:
     # ------------------------------------------------------------------
     # Events
     # ------------------------------------------------------------------
-    def _create_stage_events(self, run_id, stage, seq, db):
-        label = STAGE_LABELS.get(stage, stage.replace("_", " ").title())
-        ev = DemoEvent(
-            run_id=run_id,
-            sequence=seq,
-            timestamp=datetime.utcnow(),
-            event_type="system",
-            title=label,
-            status="waiting" if stage == "approval" else "completed",
-            related_entity_type="stage",
-            related_entity_id=stage
-        )
+    def _create_stage_events(self, run_id: str, stage: str, db: Session, results: dict):
+        """Persist the prepared engineering events for a stage."""
+        last = db.query(func.max(DemoEvent.sequence)).filter(DemoEvent.run_id == run_id).scalar() or 0
+        events = build_stage_events(stage, results)
+        if not events:
+            events = [{
+                "type": "system",
+                "title": STAGE_LABELS.get(stage, stage.replace("_", " ").title()),
+                "status": "completed",
+                "command": None,
+                "output": None,
+                "description": None,
+                "duration_ms": 500,
+                "related_file": None,
+                "next_action": None,
+            }]
 
-        details = {
-            "repository": (
-                "git remote show origin",
-                "Repository JavaAPICheck resolved. Access authorized."
-            ),
-            "inspection": (
-                "inspect repository",
-                "15 files detected. Java / Spring Boot / Maven."
-            ),
-            "architecture": (
-                "detect architecture",
-                "Language Java. Framework Spring Boot. Build tool Maven."
-            ),
-            "failure_detection": (
-                "detect failure",
-                "NULL_OBJECT_ACCESS on POST /payments/charge (HTTP 500)."
-            ),
-            "evidence": (
-                "collect evidence",
-                "Evidence events correlated by request id req-demo-1."
-            ),
-            "ghosttrace": (
-                "reconstruct failure",
-                "Root cause candidate found in PaymentProcessingService.charge()"
-            ),
-            "memory": (
-                "search failure memory",
-                "1 verified match for NULL_OBJECT_ACCESS."
-            ),
-            "investigation": (
-                "run investigation",
-                "Root cause: missing null guard before object access."
-            ),
-            "patch": (
-                "prepare patch",
-                "Patch prepared. Null guard added."
-            ),
-            "compatibility": (
-                "check patch compatibility",
-                "Language, path safety and source context checks passed."
-            ),
-            "replay": (
-                "replay original failure && replay patched failure",
-                "Original: HTTP 500\nPatched: HTTP 200"
-            ),
-            "build": (
-                "mvnw.cmd clean test",
-                "BUILD SUCCESS"
-            ),
-            "tests": (
-                "mvnw.cmd test",
-                "Tests run: 45, Failures: 0, Errors: 0, Skipped: 1"
-            ),
-            "validation": (
-                "validate repair",
-                "All validation gates passed."
-            ),
-            "approval": (
-                None,
-                None
-            ),
-            "delivery": (
-                "deliver patch",
-                "Branch and commit prepared for review."
-            ),
-            "memory_update": (
-                "update failure memory",
-                "Failure memory recorded as verified."
-            )
-        }
-
-        command, output = details.get(stage, (None, None))
-        ev.command = command
-        ev.output = output
-        if stage == "approval":
-            ev.description = "Waiting for human approval before delivery."
-
-        db.add(ev)
+        for offset, event in enumerate(events, start=1):
+            db.add(DemoEvent(
+                run_id=run_id,
+                sequence=last + offset,
+                timestamp=datetime.utcnow(),
+                event_type=event["type"],
+                title=event["title"],
+                description=event.get("description"),
+                command=(event.get("command") or None),
+                output=event.get("output"),
+                status=event.get("status", "completed"),
+                duration_ms=event.get("duration_ms"),
+                related_entity_type="stage",
+                related_entity_id=stage,
+                related_file=event.get("related_file"),
+                next_action=event.get("next_action"),
+            ))
         db.commit()
 
     # ------------------------------------------------------------------
     # Stage payloads (always derived from the database, never invented)
     # ------------------------------------------------------------------
-    def _populate_stage_data(self, res: dict, stage: str, db: Session):
+    def _populate_stage_data(self, res: dict, stage: str, db: Session, run_id: str):
         inc_uuid = UUID(self.incident_id)
 
         if stage == "repository":
@@ -538,25 +496,36 @@ class DemoRunner:
 
         elif stage == "inspection":
             repo = db.query(Repository).filter(Repository.name == 'JavaAPICheck').first()
-            files = []
+            indexed = {}
             if repo:
-                files = db.query(RepositoryFile).filter(RepositoryFile.repository_id == repo.id).order_by(RepositoryFile.file_path).all()
-            res[stage] = {
-                "files_scanned": len(files),
-                "files": [
-                    {"path": f.file_path, "language": f.language, "hash": f.file_hash}
-                    for f in files
-                ]
-            }
-            res["source"] = [
-                {
-                    "id": str(f.id),
-                    "path": f.file_path,
-                    "language": f.language,
-                    "content": f.source_snapshot
+                indexed = {
+                    f.file_path: f
+                    for f in db.query(RepositoryFile).filter(RepositoryFile.repository_id == repo.id).all()
                 }
-                for f in files
-            ]
+            source = repo_snapshot.source_files()
+            for entry in source:
+                tracked = indexed.get(entry["path"])
+                if tracked:
+                    entry["hash"] = tracked.file_hash
+            res[stage] = {
+                "files_scanned": len(source),
+                "directories": len({
+                    "/".join(entry["path"].split("/")[:-1])
+                    for entry in source if "/" in entry["path"]
+                }),
+                "files": [
+                    {
+                        "path": entry["path"],
+                        "language": entry["language"],
+                        "lines": entry["lines"],
+                        "hash": entry.get("hash"),
+                        "reason": entry.get("reason"),
+                    }
+                    for entry in source
+                ],
+            }
+            res["source"] = source
+            res["repository_tree"] = repo_snapshot.build_tree()
 
         elif stage == "architecture":
             res[stage] = {
@@ -707,7 +676,8 @@ class DemoRunner:
                     "id": str(patch.id),
                     "patch_number": patch.patch_number,
                     "branch_name": patch.branch_name,
-                    "commit_message": patch.commit_message,
+                    "delivery_branch": DEMO_FEATURE_BRANCH,
+                    "commit_message": DEMO_COMMIT_MESSAGE,
                     "diff": patch.diff,
                     "affected_files": patch.affected_files,
                     "generation_reason": patch.generation_reason,
@@ -759,7 +729,8 @@ class DemoRunner:
             res[stage] = {
                 "command": "mvnw.cmd clean test",
                 "output": (val.build_output if val and val.build_output else "BUILD SUCCESS"),
-                "result": "PASS" if (val is None or val.build_passed) else "FAIL"
+                "result": "PASS" if (val is None or val.build_passed) else "FAIL",
+                "note": "Prepared Demo Mode output. Maven is not executed."
             }
 
         elif stage == "tests":
@@ -770,7 +741,8 @@ class DemoRunner:
                 "patched": "PASS",
                 "output": (val.test_output if val and val.test_output else None),
                 "result": "PASS" if (val is None or val.tests_passed) else "FAIL",
-                "summary": {"Tests run": 45, "Failures": 0, "Errors": 0, "Skipped": 1}
+                "summary": {"Tests run": 45, "Failures": 0, "Errors": 0, "Skipped": 1},
+                "note": "Prepared Demo Mode output. Maven is not executed."
             }
 
         elif stage == "validation":
@@ -792,18 +764,7 @@ class DemoRunner:
                 }
 
         elif stage == "delivery":
-            patch = db.query(Patch).filter(Patch.incident_id == inc_uuid).order_by(Patch.patch_number.desc()).first()
-            repo = db.query(Repository).filter(Repository.name == 'JavaAPICheck').first()
-            res[stage] = {
-                "mode": "demo",
-                "branch": patch.branch_name if patch else None,
-                "base": repo.default_branch if repo else "main",
-                "commit": patch.commit_message if patch else None,
-                "files": (patch.affected_files if patch else []) or [],
-                "pull_request": "DEMO-PR-001",
-                "pull_request_url": None,
-                "note": "Demo mode does not create a real pull request."
-            }
+            res[stage] = self._deliver(db, run_id, res)
 
         elif stage == "memory_update":
             inc = db.query(Incident).filter(Incident.id == inc_uuid).first()
@@ -814,9 +775,40 @@ class DemoRunner:
                 "affected_file": (patch.affected_files or [None])[0] if patch else None,
                 "code_change": patch.generation_reason if patch else None,
                 "validation_result": "PASS",
-                "delivery_result": "DEMO-PR-001",
+                "delivery_result": (res.get("delivery") or {}).get("pull_request"),
+                "delivery_commit": (res.get("delivery") or {}).get("commit_short_sha"),
                 "status": "verified"
             }
+
+    def _deliver(self, db: Session, run_id: str, res: dict) -> Dict[str, Any]:
+        """Run the configured delivery provider against an isolated workspace."""
+        inc_uuid = UUID(self.incident_id)
+        patch = db.query(Patch).filter(Patch.incident_id == inc_uuid).order_by(Patch.patch_number.desc()).first()
+        repo = db.query(Repository).filter(Repository.name == 'JavaAPICheck').first()
+        if not patch:
+            raise ValueError("No prepared patch is available for delivery")
+
+        request = DeliveryRequest(
+            run_id=run_id,
+            base_branch=(repo.default_branch if repo else "main"),
+            branch_name=DEMO_FEATURE_BRANCH,
+            commit_message=DEMO_COMMIT_MESSAGE,
+            commit_description=(
+                patch.generation_reason
+                or "Prevents NULL_OBJECT_ACCESS in PaymentProcessingService.charge()."
+            ),
+            diff=patch.diff or "",
+        )
+        result = get_delivery_provider().deliver(request)
+        payload = dict(result.payload)
+        payload["git_commands"] = result.commands
+        payload["checks"] = [
+            {"name": "Replay", "result": (res.get("replay", {}).get("patched", {}) or {}).get("status", "PASS")},
+            {"name": "Build", "result": res.get("build", {}).get("result", "PASS")},
+            {"name": "Tests", "result": res.get("tests", {}).get("result", "PASS")},
+            {"name": "Validation", "result": "PASS" if res.get("validation", {}).get("final") == "validated" else "FAIL"},
+        ]
+        return payload
 
     @staticmethod
     def _split_diff(patch_id: str, diff: str) -> List[Dict[str, Any]]:
