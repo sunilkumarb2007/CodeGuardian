@@ -1,3 +1,4 @@
+from datetime import timezone
 import uuid
 from datetime import datetime
 from uuid import UUID
@@ -25,7 +26,7 @@ class ReplayService:
         self.replay_repo = ReplayRepository(db)
         self.engine = ReplayEngine()
 
-    def run_replay(self, incident_id: UUID, patch_id: UUID) -> ReplayResponse:
+    def run_replay(self, incident_id: UUID, patch_id: UUID, run_id: str | None = None) -> ReplayResponse:
         logger.info(f"Starting Ghost Replay for incident {incident_id}, patch {patch_id}")
         
         # 1. Validate inputs
@@ -46,7 +47,7 @@ class ReplayService:
             source_files = self.file_repo.get_files_by_repository_id(incident.repository_id)
             
         # 3. Execute Engine
-        overall_result, baseline_details, patched_details = self.engine.run_replay(incident, patch, source_files)
+        overall_result, baseline_details, patched_details = self.engine.run_replay(incident, patch, source_files, run_id=run_id)
         
         # 4. Determine DB Status (mapped to allowed constraints)
         if overall_result == "PATCH_APPLY_FAILED":
@@ -74,9 +75,9 @@ class ReplayService:
             execution_output=baseline_details.get("output"),
             environment={},
             status=db_status if patched_details.get("status") != "PATCH_APPLY_FAILED" else "failed",
-            started_at=datetime.utcnow(),
-            completed_at=datetime.utcnow(),
-            created_at=datetime.utcnow()
+            started_at=datetime.now(timezone.utc),
+            completed_at=datetime.now(timezone.utc),
+            created_at=datetime.now(timezone.utc)
         )
         self.replay_repo.save(baseline_run)
         
@@ -96,9 +97,9 @@ class ReplayService:
             execution_output=patched_details.get("output"),
             environment={},
             status=db_status,
-            started_at=datetime.utcnow(),
-            completed_at=datetime.utcnow(),
-            created_at=datetime.utcnow()
+            started_at=datetime.now(timezone.utc),
+            completed_at=datetime.now(timezone.utc),
+            created_at=datetime.now(timezone.utc)
         )
         self.replay_repo.save(patched_run)
         self.db.flush()

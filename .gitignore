@@ -1,7 +1,39 @@
+# Dependencies
 node_modules/
+.venv/
+venv/
+env/
+
+# Production Builds
 dist/
 build/
+
+# Environment and Secrets
 .env
+.env.*
+!.env.example
+*.local
+
+# Python cache & artifacts
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
 .pytest_cache/
+.coverage
+htmlcov/
+
+# Local databases and workspaces
+*.db
+*.sqlite
+*.sqlite3
+/workspace/
+/backend/workspace/
+/data/
+
+# Logs
+*.log
+logs/
+
+# System / OS
+.DS_Store
+Thumbs.db

@@ -1,3 +1,4 @@
+from datetime import timezone
 from sqlalchemy.orm import Session
 from uuid import UUID
 import uuid
@@ -64,7 +65,7 @@ class MemoryService:
                 matched_affected_files=candidate.matched_affected_files,
                 matched_code_context=False,
                 verification_status="pending",
-                created_at=datetime.utcnow()
+                created_at=datetime.now(timezone.utc)
             )
             
             match_record = self.repo.save_match(match_record)
@@ -84,4 +85,39 @@ class MemoryService:
             match_status="match_found",
             matches=matches
         )
+
+    def update_memory(self, incident_id: UUID, patch_id: UUID, pr_number: int | None = None) -> models.FailureMemory | None:
+        """
+        To be called ONLY after VALIDATED.
+        Records the failure fingerprint, root cause, files, patch summary, and commit SHA.
+        """
+        logger.info(f"Updating memory for incident {incident_id}")
+        incident = self.incident_repo.get_by_id(incident_id)
+        if not incident or incident.status == "FAILED":
+            return None
+            
+        from app.db.repositories import PatchRepository
+        patch_repo = PatchRepository(self.db)
+        patch = patch_repo.get_by_id(patch_id)
+        if not patch or patch.status not in ["validated", "pushed"]:
+            return None
+
+        new_memory = models.FailureMemory(
+            id=uuid.uuid4(),
+            incident_id=incident_id,
+            application_id=incident.application_id,
+            error_pattern=incident.title or incident.error_fingerprint or "Unknown",
+            error_fingerprint=incident.error_fingerprint,
+            root_cause=patch.generation_reason or incident.description or "Unknown",
+            affected_files=patch.affected_files,
+            code_change=patch.diff,
+            patch_summary=patch.generation_reason,
+            searchable_text=f"{incident.title} {patch.generation_reason}",
+            memory_status="verified",
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc)
+        )
+        self.db.add(new_memory)
+        self.db.flush()
+        return new_memory
 

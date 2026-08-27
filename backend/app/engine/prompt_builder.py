@@ -98,11 +98,47 @@ class InvestigationPromptBuilder:
         prompt.append("1. Explain the likely root cause.")
         prompt.append("2. Identify the affected source location.")
         prompt.append("3. Explain the causal relationship.")
-        prompt.append("4. Compare historical fix if available.")
-        prompt.append("5. Propose the smallest appropriate repair.")
+        prompt.append("4. Compare historical fix if available. Rate applicability (HIGH, MEDIUM, LOW, or REFERENCE_ONLY).")
+        prompt.append("5. Propose a repair plan with specific steps, risk assessment, and expected behavior.")
         prompt.append("6. Produce a structured patch candidate.")
-        prompt.append("   - IMPORTANT: If your fix changes the expected behavior of the system, you MUST also include a patch for the corresponding unit tests to reflect the new behavior (e.g. if an intentional bug test expects a 500 error, change it to expect the fixed behavior).")
+        prompt.append("   - IMPORTANT: If your fix changes the expected behavior of the system, you MUST also include a patch for the corresponding unit tests to reflect the new behavior.")
         prompt.append("7. State assumptions.")
         prompt.append("8. State what must be verified later.")
+        
+        prompt.append("\n=== STRICT GUIDELINES ===")
+        prompt.append("- NO CHAIN OF THOUGHT: Do not output private reasoning, 'thinking steps', or 'let me think deeply'. Provide only concise, evidence-backed engineering conclusions.")
+        prompt.append("- EXACT SCHEMA: You must return a strict JSON object that perfectly matches the following schema:")
+        prompt.append("""
+{
+  "status": "completed",
+  "root_cause": {
+    "service": "string",
+    "summary": "string",
+    "affected_file": "string",
+    "location": "string",
+    "confidence": 1.0,
+    "failure_mechanism": "string"
+  },
+  "historical_reference": {
+    "found": true,
+    "memory_status": "string",
+    "applicability": "string"
+  },
+  "repair_plan": {
+    "steps": [{"action": "string", "description": "string"}],
+    "risk": "string",
+    "expected_behavior": "string"
+  },
+  "patch_candidate": {
+    "status": "unvalidated",
+    "files_changed": ["string"],
+    "diff": "string",
+    "explanation": "string"
+  },
+  "verification_requirements": ["string"],
+  "assumptions": ["string"],
+  "evidence_used": ["string"]
+}
+""")
         
         return "\n".join(prompt)

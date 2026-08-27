@@ -1,3 +1,4 @@
+from datetime import timezone
 from sqlalchemy.orm import Session
 from uuid import UUID
 import uuid
@@ -76,7 +77,7 @@ class GhostTraceService:
                     confidence=trace_result.confidence,
                     reasoning_summary=trace_result.reasoning_summary,
                     correlation_method=trace_result.correlation_method,
-                    created_at=datetime.utcnow()
+                    created_at=datetime.now(timezone.utc)
                 )
                 self.db.add(new_trace)
                 
@@ -94,7 +95,7 @@ class GhostTraceService:
                     error_message=n.error_message,
                     node_type=n.node_type,
                     evidence_ids=[uuid.UUID(e_id) for e_id in n.evidence_ids],
-                    created_at=datetime.utcnow()
+                    created_at=datetime.now(timezone.utc)
                 )
                 self.db.add(db_node)
             self.db.flush()
@@ -109,7 +110,7 @@ class GhostTraceService:
                     relationship_type=e.relationship_type,
                     correlation_strength=e.correlation_strength,
                     evidence_ids=[uuid.UUID(e_id) for e_id in e.evidence_ids],
-                    created_at=datetime.utcnow()
+                    created_at=datetime.now(timezone.utc)
                 )
                 self.db.add(db_edge)
                 

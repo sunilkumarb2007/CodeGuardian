@@ -1,3 +1,4 @@
+from datetime import timezone
 from sqlalchemy.orm import Session
 from uuid import UUID
 from app.db.repositories import IncidentRepository
@@ -42,8 +43,8 @@ class IncidentService:
             description=data.get('failure_summary', 'Unknown failure'),
             status=data.get('status', 'investigating'),
             resolution_status="unresolved",
-            created_at=models.datetime.utcnow(),
-            updated_at=models.datetime.utcnow()
+            created_at=models.datetime.now(timezone.utc),
+            updated_at=models.datetime.now(timezone.utc)
         )
         self.repo.save(incident)
         self.repo.db.flush() # ensure ID is generated

@@ -37,61 +37,17 @@ class ValidationService:
         if not patch:
             return False, "PATCH_NOT_FOUND"
             
-        if architecture:
-            lang = (architecture.get("language") or "").lower()
-            allowed_extensions = []
-            if lang == "java":
-                allowed_extensions = [".java", ".xml", ".properties", ".yml", ".yaml", ".gradle", "pom.xml"]
-            elif lang == "python":
-                allowed_extensions = [".py", ".toml", ".txt", ".yml", ".yaml"]
-            elif lang in ["javascript/typescript", "node", "react"]:
-                allowed_extensions = [".js", ".jsx", ".ts", ".tsx", ".json"]
-                
-            if allowed_extensions:
-                for file_path in patch.affected_files:
-                    if not any(file_path.endswith(ext) for ext in allowed_extensions):
-                        return False, f"PATCH_LANGUAGE_MISMATCH: file {file_path} invalid for {lang}"
-                        
-        # Basic context verification against actual source
-        if not self._verify_patch_context_against_source(patch):
-            return False, "PATCH_CONTEXT_MISMATCH"
-            
-        return True, ""
-
-    def _verify_patch_context_against_source(self, patch) -> bool:
         incident = self.incident_repo.get_by_id(patch.incident_id)
         if not incident or not incident.repository_id:
-            return True # Can't verify, skip
+            return True, ""
             
         from app.db.repositories import RepositoryFileRepository
+        from app.services.patch_safety_validator import PatchSafetyValidator
+        
         file_repo = RepositoryFileRepository(self.db)
         all_files = file_repo.get_files_by_repository_id(incident.repository_id)
         
-        # Check that deleted lines in diff actually exist in the original source
-        deleted_lines = []
-        for line in patch.diff.split('\n'):
-            if line.startswith('-') and not line.startswith('---'):
-                deleted_lines.append(line[1:].strip())
-                
-        if not deleted_lines:
-            return True
-            
-        for del_line in deleted_lines:
-            found = False
-            for file_path in patch.affected_files:
-                snapshot = None
-                for f in all_files:
-                    if f.file_path.endswith(file_path):
-                        snapshot = f.source_snapshot
-                        break
-                if snapshot and del_line in snapshot:
-                    found = True
-                    break
-            if del_line and not found:
-                logger.warning(f"Patch deleted line not found in any affected source file: {del_line}")
-                return False
-                        
-        return True
+        return PatchSafetyValidator.validate(patch, all_files, architecture)
 
     def run_validation(self, incident_id: UUID, patch_id: UUID) -> ValidationRunResponse:
         incident = self.incident_repo.get_by_id(incident_id)

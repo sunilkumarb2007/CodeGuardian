@@ -10,14 +10,15 @@ from app.schemas.github import PullRequestDeliveryResponse
 def mock_db():
     return MagicMock()
 
-def test_delivery_fetches_original_and_applies_diff(mock_db):
+@patch("app.services.delivery_service.GitHubClient")
+def test_delivery_fetches_original_and_applies_diff(mock_gh_cls, mock_db):
     service = DeliveryService(mock_db)
     
     # Mocks
     service.incident_repo = MagicMock()
     service.patch_repo = MagicMock()
     service.pr_repo = MagicMock()
-    service.github_client = MagicMock()
+    service.github_client = mock_gh_cls.return_value
     
     incident = MagicMock()
     incident.id = uuid.uuid4()
@@ -34,27 +35,26 @@ def test_delivery_fetches_original_and_applies_diff(mock_db):
     
     service.pr_repo.get_by_patch_id.return_value = None
     
-    service.github_client.get_default_branch.return_value = "main"
-    service.github_client.get_branch_sha.return_value = "abc123sha"
-    service.github_client.get_file_sha.return_value = "file_sha"
-    service.github_client.get_file_content.return_value = "old\n"
+    mock_gh_cls.return_value.get_default_branch.return_value = "main"
+    mock_gh_cls.return_value.get_branch_sha.return_value = "abc123sha"
+    mock_gh_cls.return_value.get_file_sha.return_value = "file_sha"
+    mock_gh_cls.return_value.get_file_content.return_value = "old\n"
     service.github_client.create_pull_request.return_value = {"number": 1, "html_url": "http://pr"}
     
     # Since we don't have git installed or want to execute git apply in unit tests cleanly across all environments, 
     # we mock the subprocess.run call used in DeliveryService.
-    with patch("subprocess.run") as mock_run, \
+    with patch("app.services.command_service.CommandExecutionService.execute_command") as mock_exec, \
          patch("app.core.config.settings.github_token", "fake_token"):
          
         # Simulate subprocess modifying the file
-        def fake_git_apply(*args, **kwargs):
-            import os
-            # write "new\n" to candidate.patch's target
-            cwd = kwargs.get("cwd")
-            with open(os.path.join(cwd, "src/test.java"), "w", encoding="utf-8") as f:
-                f.write("new\n")
-            return MagicMock(returncode=0)
+        def fake_exec(cmd, cwd, *args, **kwargs):
+                if "apply" in cmd:
+                    import os
+                    with open(os.path.join(cwd, "src/test.java"), "w", encoding="utf-8") as f:
+                        f.write("new\n")
+                return {"exit_code": 0}
             
-        mock_run.side_effect = fake_git_apply
+        mock_exec.side_effect = fake_exec
         
         response = service.run_delivery(incident.id, patch_obj.id, "https://github.com/sunilkumarb2007/JavaAPICheck")
         
@@ -67,14 +67,15 @@ def test_delivery_fetches_original_and_applies_diff(mock_db):
         assert args[4] == encoded_new # content_base64 argument
         assert "Applied patch:" not in base64.b64decode(args[4]).decode("utf-8") # Must not be just a comment wrapper
 
-def test_delivery_handles_github_errors(mock_db):
+@patch("app.services.delivery_service.GitHubClient")
+def test_delivery_handles_github_errors(mock_gh_cls, mock_db):
     service = DeliveryService(mock_db)
     
     # Mocks
     service.incident_repo = MagicMock()
     service.patch_repo = MagicMock()
     service.pr_repo = MagicMock()
-    service.github_client = MagicMock()
+    service.github_client = mock_gh_cls.return_value
     
     incident = MagicMock()
     incident.id = uuid.uuid4()
@@ -90,10 +91,10 @@ def test_delivery_handles_github_errors(mock_db):
     service.pr_repo.get_by_patch_id.return_value = None
     
     # Simulate a 404 from get_file_content
-    service.github_client.get_default_branch.return_value = "main"
-    service.github_client.get_branch_sha.return_value = "abc123sha"
-    service.github_client.get_file_sha.return_value = None
-    service.github_client.get_file_content.side_effect = GitHubError("Not Found", 404)
+    mock_gh_cls.return_value.get_default_branch.return_value = "main"
+    mock_gh_cls.return_value.get_branch_sha.return_value = "abc123sha"
+    mock_gh_cls.return_value.get_file_sha.return_value = None
+    mock_gh_cls.return_value.get_file_content.side_effect = GitHubError("Not Found", 404)
     
     with patch("app.core.config.settings.github_token", "fake_token"):
         response = service.run_delivery(incident.id, patch_obj.id, "https://github.com/sunilkumarb2007/JavaAPICheck")

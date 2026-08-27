@@ -37,26 +37,26 @@ export function Logo() {
 export function TopNav({ cta }: { cta?: ReactNode }) {
   const { pathname } = useLocation()
   return (
-    <header className="sticky top-0 z-50 px-4 pt-4 sm:px-8">
-      <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-4">
-        <div className="flex items-center gap-2 rounded-pill border-2 border-ink-700 bg-ink-900/85 px-5 py-3 backdrop-blur">
+    <header className="sticky top-4 z-50 px-4 sm:px-8 pointer-events-none">
+      <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-4 rounded-2xl border-2 border-ink-700 bg-ink-900/85 px-5 py-3 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-md pointer-events-auto">
+        <div className="flex items-center gap-2">
           <Logo />
         </div>
 
-        <nav className="hidden items-center gap-1 rounded-pill border-2 border-ink-700 bg-ink-900/85 px-3 py-2 backdrop-blur lg:flex">
+        <nav className="hidden flex-1 items-center justify-center gap-2 lg:flex">
           {NAV.map((item) => (
             <a
               key={item.label}
               href={item.to}
-              className="rounded-pill px-4 py-2 text-sm font-medium text-ink-300 transition-colors hover:bg-white hover:text-ink-900"
+              className="rounded-lg px-4 py-2 text-sm font-medium text-ink-300 transition-colors hover:bg-ink-800 hover:text-white"
             >
               {item.label}
             </a>
           ))}
           <NavLink
             to="/"
-            className={`rounded-pill px-4 py-2 text-sm font-medium transition-colors ${
-              pathname === '/' ? 'bg-white text-ink-900' : 'text-ink-300 hover:text-white'
+            className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+              pathname === '/' ? 'bg-ink-800 text-white' : 'text-ink-300 hover:bg-ink-800 hover:text-white'
             }`}
           >
             Home
@@ -79,7 +79,7 @@ export function Footer() {
         </div>
         <div className="mt-14 grid gap-10 border-t-2 border-ink-900/20 pt-10 md:grid-cols-4">
           <div>
-            <p className="font-mono text-[11px] uppercase tracking-[0.28em] text-ink-900/60">Platform</p>
+            <p className="font-mono text-xs uppercase tracking-[0.28em] text-ink-900/60">Platform</p>
             <ul className="mt-4 space-y-2 text-sm font-medium">
               <li>GhostTrace reconstruction</li>
               <li>Failure memory</li>
@@ -88,7 +88,7 @@ export function Footer() {
             </ul>
           </div>
           <div>
-            <p className="font-mono text-[11px] uppercase tracking-[0.28em] text-ink-900/60">Pipeline</p>
+            <p className="font-mono text-xs uppercase tracking-[0.28em] text-ink-900/60">Pipeline</p>
             <ul className="mt-4 space-y-2 text-sm font-medium">
               <li>Inspect → Triage</li>
               <li>Evidence → GhostTrace</li>
@@ -97,7 +97,7 @@ export function Footer() {
             </ul>
           </div>
           <div>
-            <p className="font-mono text-[11px] uppercase tracking-[0.28em] text-ink-900/60">Safety</p>
+            <p className="font-mono text-xs uppercase tracking-[0.28em] text-ink-900/60">Safety</p>
             <ul className="mt-4 space-y-2 text-sm font-medium">
               <li>Human approval gate</li>
               <li>No unvalidated delivery</li>
@@ -106,7 +106,7 @@ export function Footer() {
             </ul>
           </div>
           <div>
-            <p className="font-mono text-[11px] uppercase tracking-[0.28em] text-ink-900/60">Project</p>
+            <p className="font-mono text-xs uppercase tracking-[0.28em] text-ink-900/60">Project</p>
             <ul className="mt-4 space-y-2 text-sm font-medium">
               <li>
                 <a className="underline underline-offset-4" href="https://github.com/sunilkumarb2007/CodeGuardian">
@@ -117,7 +117,7 @@ export function Footer() {
             </ul>
           </div>
         </div>
-        <p className="mt-12 flex items-center gap-3 font-mono text-[11px] uppercase tracking-[0.22em] text-ink-900/60">
+        <p className="mt-12 flex items-center gap-3 font-mono text-xs uppercase tracking-[0.22em] text-ink-900/60">
           <LogoMark className="h-5 w-5 drop-shadow-none" />
           CodeGuardian — autonomous engineering failure investigation
         </p>

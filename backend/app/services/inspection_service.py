@@ -1,10 +1,11 @@
-import subprocess
 import os
 import shutil
 import tempfile
 import logging
 from urllib.parse import urlparse
 from app.schemas.orchestration import InspectionResult, ArchitectureSummary
+from app.services.command_service import CommandExecutionService
+from app.services.git_workspace import GitWorkspace
 
 logger = logging.getLogger(__name__)
 
@@ -14,11 +15,20 @@ class RepositoryInspectionService:
 
     def inspect_repository(self, repository_url: str, db=None, repository_id=None) -> InspectionResult:
         logger.info(f"Starting inspection for {repository_url}")
+        logger.error(f"DEBUG: db is {db is not None}, repository_id is {repository_id}")
         
         # 1. Clone repository to temp directory
-        temp_dir = tempfile.mkdtemp(prefix="codeguardian_")
+        if repository_id:
+            workspace_root = os.path.join(tempfile.gettempdir(), "codeguardian_workspaces")
+            temp_dir = os.path.join(workspace_root, "repositories", str(repository_id), "source")
+            os.makedirs(temp_dir, exist_ok=True)
+        else:
+            temp_dir = tempfile.mkdtemp(prefix="codeguardian_")
+            
         try:
-            self._clone_repo(repository_url, temp_dir)
+            # If the directory is already populated, don't download again (Phase D reuse)
+            if not os.listdir(temp_dir):
+                self._clone_repo(repository_url, temp_dir)
             
             # 2. Analyze Architecture
             architecture = self._analyze_architecture(temp_dir)
@@ -27,12 +37,20 @@ class RepositoryInspectionService:
             if db and repository_id:
                 from app.db.models import RepositoryFile
                 import uuid
-                from datetime import datetime
+                from typing import Optional
+                from datetime import datetime, timezone
                 # Clean old files to avoid duplicate clutter
                 db.query(RepositoryFile).filter(RepositoryFile.repository_id == repository_id).delete()
                 
+                # Ignored directories
+                ignored_dirs = {'.git', 'node_modules', 'venv', '.venv', '__pycache__', 'dist', 'build', '.idea', '.vscode'}
+                
                 # Walk temp_dir and ingest
-                for root, _, files in os.walk(temp_dir):
+                files_ingested = 0
+                logger.error(f"DEBUG: Walking {temp_dir}")
+                for root, dirs, files in os.walk(temp_dir):
+                    dirs[:] = [d for d in dirs if d not in ignored_dirs]
+                    
                     for file in files:
                         if file.endswith(('.py', '.java', '.js', '.ts', '.go', '.rs', '.json', '.xml', '.yml', '.yaml', '.txt', '.md', '.gradle', '.kts')):
                             file_path = os.path.join(root, file)
@@ -45,12 +63,16 @@ class RepositoryInspectionService:
                                     repository_id=repository_id,
                                     file_path=rel_path,
                                     source_snapshot=content,
-                                    created_at=datetime.utcnow(),
-                                    updated_at=datetime.utcnow()
+                                    created_at=datetime.now(timezone.utc),
+                                    updated_at=datetime.now(timezone.utc)
                                 ))
+                                files_ingested += 1
                             except Exception as e:
                                 logger.warning(f"Failed to ingest file {rel_path}: {e}")
-                db.flush()
+                logger.error(f"DEBUG: Ingested {files_ingested} files")
+                db.commit()
+                check_files = db.query(RepositoryFile).filter(RepositoryFile.repository_id == repository_id).all()
+                logger.error(f"DEBUG: Check files directly after flush: {len(check_files)}")
             
             # 3. Detect build/test failures
             build_passed, test_passed, failure_output, details = self._run_static_checks(temp_dir, architecture)
@@ -66,46 +88,18 @@ class RepositoryInspectionService:
             )
             
         finally:
-            shutil.rmtree(temp_dir, ignore_errors=True)
+            if not repository_id:
+                from app.core.workspace import remove_repository_workspace
+                remove_repository_workspace(temp_dir)
 
     def _clone_repo(self, url: str, target_dir: str):
-        import urllib.request
-        import zipfile
-        import io
-        import os
-        import urllib.parse
-        from app.core.config import settings
-
-        logger.info(f"Downloading {url} into {target_dir}")
-        parsed = urllib.parse.urlparse(url)
-        parts = [p for p in parsed.path.split('/') if p]
-        if len(parts) >= 2:
-            owner = parts[0]
-            repo = parts[1].replace('.git', '')
-            zip_url = f"https://github.com/{owner}/{repo}/archive/refs/heads/main.zip"
-            
-            try:
-                req = urllib.request.Request(zip_url)
-                token = self.token or settings.github_token
-                if token:
-                    req.add_header("Authorization", f"token {token}")
-                
-                with urllib.request.urlopen(req) as response:
-                    with zipfile.ZipFile(io.BytesIO(response.read())) as zip_ref:
-                        zip_ref.extractall(target_dir)
-                        
-                # Move contents from repo-main up to target_dir
-                extracted_dir = os.path.join(target_dir, f"{repo}-main")
-                if os.path.exists(extracted_dir):
-                    import shutil
-                    for item in os.listdir(extracted_dir):
-                        shutil.move(os.path.join(extracted_dir, item), os.path.join(target_dir, item))
-                    os.rmdir(extracted_dir)
-            except Exception as e:
-                logger.error(f"Download failed: {e}")
-                raise RuntimeError(f"Failed to download repository: {e}")
-        else:
-            raise RuntimeError("Invalid GitHub URL format.")
+        logger.info(f"Cloning {url} into {target_dir}")
+        git = GitWorkspace(os.path.dirname(target_dir))
+        res = git.clone(url, target_dir)
+        if res.get("exit_code") != 0:
+            error_msg = res.get("stderr", "Unknown Git Error")
+            logger.error(f"Clone failed: {error_msg}")
+            raise RuntimeError(f"Failed to clone repository: {error_msg}")
 
     def _analyze_architecture(self, repo_dir: str) -> ArchitectureSummary:
         tech_stack = []
@@ -227,20 +221,21 @@ class RepositoryInspectionService:
         
         start_time = time.time()
         try:
+            cmd_svc = CommandExecutionService()
             # Pre-requisites
             if arch.test_framework == "pytest":
-                subprocess.run(["pip", "install", "-r", "requirements.txt"], cwd=repo_dir, check=True, capture_output=True)
+                cmd_svc.execute_command(["pip", "install", "-r", "requirements.txt"], cwd=repo_dir, timeout=180)
             elif arch.test_framework == "jest/vitest":
-                subprocess.run(["npm", "install"], cwd=repo_dir, check=True, capture_output=True)
+                cmd_svc.execute_command(["npm", "install"], cwd=repo_dir, timeout=180)
             
             # Execute main test command
-            res = subprocess.run(cmd, cwd=repo_dir, capture_output=True, text=True, shell=(os.name == 'nt' and (cmd[0].endswith('.bat') or cmd[0].endswith('.cmd') or 'mvn' in cmd[0] or 'gradle' in cmd[0] or 'npm' in cmd[0])))
-            details["exit_code"] = res.returncode
-            details["stdout"] = res.stdout
-            details["stderr"] = res.stderr
-            if res.returncode != 0:
+            res = cmd_svc.execute_command(cmd, cwd=repo_dir, timeout=300, architecture=arch.build_system)
+            details["exit_code"] = res.get("exit_code", -1)
+            details["stdout"] = res.get("stdout", "")
+            details["stderr"] = res.get("stderr", "")
+            if res.get("exit_code") != 0:
                 test_passed = False
-                failure_output = res.stdout + "\n" + res.stderr
+                failure_output = details["stdout"] + "\n" + details["stderr"]
         except Exception as e:
             test_passed = False
             failure_output = str(e)

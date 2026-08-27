@@ -1,214 +1,162 @@
 import os
 import shutil
-import subprocess
 import logging
 import uuid
 import tempfile
 from typing import Dict, Any, Tuple
 
 from app.db import models
+from app.services.command_service import CommandExecutionService
 
 logger = logging.getLogger(__name__)
 
 class ReplayEngine:
-    def __init__(self, workspace_root: str = None):
+    def __init__(self, workspace_root: str = None, event_logger=None):
         self.workspace_root = workspace_root or os.path.join(tempfile.gettempdir(), "codeguardian_workspaces")
+        self.cmd_svc = CommandExecutionService()
+        self.event_logger = event_logger
 
-    def run_replay(self, incident: models.Incident, patch: models.Patch | None, source_files: list[models.RepositoryFile]) -> Tuple[str, dict, dict]:
+    def emit_event(self, event_type: str, title: str, description: str = None, command: str = None, output: str = None):
+        if self.event_logger:
+            self.event_logger.emit(event_type, title, description=description, command=command, output=output)
+
+    def run_replay(self, incident: models.Incident, patch: models.Patch | None, run_id: str, repo: models.Repository, architecture: Any) -> Tuple[str, dict, dict]:
         """
-        Executes a baseline replay, applies the patch (if any), and executes a patched replay.
-        Returns: (overall_result, baseline_details, patched_details)
+        Executes a baseline replay, applies the patch, builds, tests, and executes a patched replay.
         """
-        # Execute in an isolated host workspace as requested
+        source_dir = os.path.join(self.workspace_root, "repositories", str(repo.id), "source")
+        if not os.path.exists(source_dir):
+            self.emit_event("STATUS", "Source directory missing", description=source_dir)
+            return "WORKSPACE_MISSING", {}, {}
 
-
-        workspace_dir = os.path.join(self.workspace_root, str(uuid.uuid4()))
-        os.makedirs(workspace_dir, exist_ok=True)
+        run_uuid = run_id
+        workspace_dir = os.path.join(self.workspace_root, "runs", run_uuid)
+        original_dir = os.path.join(workspace_dir, "original")
+        patched_dir = os.path.join(workspace_dir, "patched")
+        
+        os.makedirs(original_dir, exist_ok=True)
+        os.makedirs(patched_dir, exist_ok=True)
         
         try:
-            # 1. Setup workspace with source files
-            for sf in source_files:
-                file_path = os.path.join(workspace_dir, sf.file_path)
-                os.makedirs(os.path.dirname(file_path), exist_ok=True)
-                with open(file_path, "w") as f:
-                    f.write(sf.source_snapshot or "")
+            # 1. Setup workspace by copying (not cloning)
+            self._copy_dir(source_dir, original_dir)
+            self.emit_event("STATUS", "Creating baseline snapshot", description=f"Copied {source_dir} to {original_dir}")
             
-            # 2. Baseline Replay
-            baseline_details = self._execute_sandbox(workspace_dir, is_patched=False)
+            # Baseline execution
+            self.emit_event("STATUS", "Running baseline verification")
+            baseline_details = self._execute_sandbox(original_dir, architecture, is_patched=False)
             
-            # 3. Apply Patch
-            if patch:
-                patch_applied = self._apply_patch(workspace_dir, patch)
-                if not patch_applied:
-                    return "PATCH_APPLY_FAILED", baseline_details, {"status": "PATCH_APPLY_FAILED"}
-                
-                # 4. Patched Replay
-                patched_details = self._execute_sandbox(workspace_dir, is_patched=True)
+            # Validate Baseline
+            if baseline_details.get("exit_code") == 0:
+                self.emit_event("ANALYSIS", "BASELINE_FAILURE_NOT_REPRODUCED", description="Baseline test unexpectedly passed.")
+                return "BASELINE_FAILURE_NOT_REPRODUCED", baseline_details, {}
             else:
-                patched_details = {"status": "NO_PATCH_PROVIDED"}
+                self.emit_event("ANALYSIS", "Baseline failure reproduced", description="Expected test failure observed.")
+
+            if not patch:
+                return "BASELINE_ONLY", baseline_details, {"status": "NO_PATCH"}
                 
+            # 2. Prepare patched workspace
+            self.emit_event("STATUS", "Preparing isolated replay workspace")
+            self._copy_dir(source_dir, patched_dir)
+            
+            # 3. Apply patch using real git apply --check first
+            patch_applied = self._apply_patch(patched_dir, patch)
+            if not patch_applied:
+                return "PATCH_APPLY_FAILED", baseline_details, {"status": "PATCH_APPLY_FAILED"}
+                
+            # 4. Patched execution
+            self.emit_event("STATUS", "Running build")
+            patched_details = self._execute_sandbox(patched_dir, architecture, is_patched=True)
+            
             # 5. Compare
-            if patch:
-                if baseline_details.get("http_status") == patched_details.get("http_status"):
-                    if patched_details.get("http_status") == 200:
-                        result = "REPLAY_CHANGED_BEHAVIOR"
-                    else:
-                        result = "REPLAY_FAILURE_PERSISTS"
-                else:
-                    result = "REPLAY_CHANGED_BEHAVIOR"
+            if patched_details.get("exit_code") == 0:
+                result = "REPLAY_CHANGED_BEHAVIOR"
+                self.emit_event("VALIDATION", "REPLAY_CHANGED_BEHAVIOR")
+                self.emit_event("VALIDATION", "TESTS_PASSED")
             else:
-                result = "BASELINE_ONLY"
+                result = "REPLAY_FAILURE_PERSISTS"
+                self.emit_event("VALIDATION", "TESTS_FAILED")
                 
             return result, baseline_details, patched_details
 
         finally:
-            self._cleanup_workspace(workspace_dir)
+            pass # Keep runs around for debugging in Phase D
 
-    def _check_docker_available(self) -> bool:
-        try:
-            result = subprocess.run(["docker", "--version"], capture_output=True, text=True, check=True)
-            return True
-        except (subprocess.SubprocessError, FileNotFoundError):
-            return False
+    def _copy_dir(self, src: str, dst: str):
+        if os.path.exists(dst):
+            from app.core.workspace import remove_repository_workspace
+            remove_repository_workspace(dst)
+        shutil.copytree(src, dst)
 
     def _apply_patch(self, workspace_dir: str, patch: models.Patch) -> bool:
         patch_path = os.path.join(workspace_dir, "candidate.patch")
-        patch_content = patch.diff
-        if not patch_content.endswith("\n"):
-            patch_content += "\n"
+        # Fix blank lines in LLM diffs which should have a single space prefix
+        patch_lines = []
+        for line in patch.diff.splitlines():
+            line = line.rstrip("\r")
+            if line == "":
+                patch_lines.append(" ")
+            else:
+                patch_lines.append(line)
+        patch_content = "\n".join(patch_lines) + "\n"
             
-        with open(patch_path, "w") as f:
+        with open(patch_path, "w", encoding="utf-8", newline="\n") as f:
             f.write(patch_content)
             
-        try:
-            # Custom fuzzy patch applier
-            current_file = None
-            lines = patch_content.splitlines()
-            
-            import re
-            
-            hunks = []
-            current_hunk = None
-            
-            for line in lines:
-                if line.startswith("--- "):
-                    pass
-                elif line.startswith("+++ "):
-                    current_file = line[4:].strip()
-                    if current_file.startswith("b/"):
-                        current_file = current_file[2:]
-                    # Gemini might not use a/ or b/, it might just be the raw path
-                elif line.startswith("@@ "):
-                    if current_hunk:
-                        hunks.append(current_hunk)
-                    current_hunk = {"file": current_file, "removes": [], "adds": []}
-                else:
-                    if current_hunk is not None:
-                        if line.startswith("-"):
-                            current_hunk["removes"].append(line[1:])
-                        elif line.startswith("+"):
-                            current_hunk["adds"].append(line[1:])
-                        elif line.startswith(" "):
-                            current_hunk["removes"].append(line[1:])
-                            current_hunk["adds"].append(line[1:])
-            
-            if current_hunk:
-                hunks.append(current_hunk)
-                
-            # Apply hunks
-            for hunk in hunks:
-                target_file = os.path.join(workspace_dir, hunk["file"])
-                if not os.path.exists(target_file):
-                    logger.warning(f"File not found for patching: {target_file}")
-                    continue
-                
-                with open(target_file, "r") as f:
-                    file_content = f.read()
-                
-                # Simple replacement strategy
-                remove_str = "\n".join(hunk["removes"]).strip()
-                add_str = "\n".join(hunk["adds"])
-                
-                # If remove_str is empty, we don't know where to insert unless we have context.
-                # If LLM didn't provide enough context, this might fail or insert in wrong place.
-                if remove_str:
-                    # Find remove_str ignoring leading/trailing whitespace
-                    if remove_str in file_content:
-                        file_content = file_content.replace(remove_str, add_str)
-                    else:
-                        # Try line by line matching
-                        file_lines = file_content.splitlines()
-                        for i in range(len(file_lines) - len(hunk["removes"]) + 1):
-                            match = True
-                            for j, remove_line in enumerate(hunk["removes"]):
-                                if i + j >= len(file_lines):
-                                    match = False
-                                    break
-                                if file_lines[i + j].strip() != remove_line.strip():
-                                    match = False
-                                    break
-                            if match:
-                                # Replace
-                                del file_lines[i:i+len(hunk["removes"])]
-                                for j, add_line in enumerate(hunk["adds"]):
-                                    file_lines.insert(i+j, add_line)
-                                file_content = "\n".join(file_lines) + "\n"
-                                break
-                        else:
-                            logger.error(f"Could not find matching lines for hunk in {target_file}")
-                            return False
-                
-                with open(target_file, "w") as f:
-                    f.write(file_content)
-                    
-            return True
-        except Exception as e:
-            logger.error(f"Failed to apply patch: {e}")
+        # Security checks
+        if ".." in patch_content or "--- a/C:" in patch_content or "+++ b/C:" in patch_content or "--- a//" in patch_content or "+++ b//" in patch_content:
+            self.emit_event("ANALYSIS", "Patch failed path safety", description="Contains traversal or absolute path")
             return False
+            
+        self.emit_event("STATUS", "Applying patch")
+        
+        # Git apply --check
+        check_res = self.cmd_svc.execute_command(["git", "apply", "--check", "--recount", "--ignore-space-change", "--ignore-whitespace", "-C1", "candidate.patch"], cwd=workspace_dir, timeout_seconds=10, architecture="git")
+        if check_res["exit_code"] != 0:
+            self.emit_event("OUTPUT", "git apply --check failed", description=check_res["stderr"])
+            return False
+            
+        # Git apply
+        apply_res = self.cmd_svc.execute_command(["git", "apply", "--recount", "--ignore-space-change", "--ignore-whitespace", "-C1", "candidate.patch"], cwd=workspace_dir, timeout_seconds=10, architecture="git")
+        if apply_res["exit_code"] != 0:
+            self.emit_event("OUTPUT", "git apply failed", description=apply_res["stderr"])
+            return False
+            
+        for changed_file in patch.affected_files:
+            self.emit_event("FILE_CHANGE", changed_file, description="Modified by patch")
+            
+        return True
 
-    def _execute_sandbox(self, workspace_dir: str, is_patched: bool) -> dict:
-        from app.services.inspection_service import RepositoryInspectionService
-        inspector = RepositoryInspectionService()
-        arch = inspector._analyze_architecture(workspace_dir)
-        build_passed, test_passed, failure_output, details = inspector._run_static_checks(workspace_dir, arch)
+    def _execute_sandbox(self, workspace_dir: str, architecture: Any, is_patched: bool) -> dict:
+        # Resolve build/test commands based on architecture allowlist
+        build_sys = architecture.get("build_system", "unknown") if isinstance(architecture, dict) else (getattr(architecture, "build_system", "unknown") if architecture else "unknown")
+        lang = architecture.get("language", "unknown") if isinstance(architecture, dict) else (getattr(architecture, "language", "unknown") if architecture else "unknown")
+        
+        test_cmd = ["pytest"] # Default fallback
+        if build_sys == "maven":
+            test_cmd = ["mvnw.cmd" if os.name == "nt" else "./mvnw", "test"]
+        elif build_sys == "gradle":
+            test_cmd = ["gradlew.bat" if os.name == "nt" else "./gradlew", "test"]
+        elif build_sys == "npm":
+            test_cmd = ["npm", "test"]
+            
+        cmd_str = " ".join(test_cmd)
+        if is_patched:
+            self.emit_event("COMMAND", cmd_str)
+            
+        res = self.cmd_svc.execute_command(test_cmd, cwd=workspace_dir, timeout_seconds=300, architecture=build_sys)
+        
+        if is_patched:
+            self.emit_event("OUTPUT", "Tests run", output=res["stdout"][-1000:])
+            if res["exit_code"] == 0:
+                self.emit_event("STATUS", "Tests passed")
+            else:
+                self.emit_event("STATUS", "Tests failed")
         
         return {
             "status": "completed",
-            "http_status": 200 if test_passed else 500,
-            "failure_fingerprint": str(details.get("exit_code")) if not test_passed else None,
-            "output": details.get("stdout", "") + "\n" + details.get("stderr", "")
+            "exit_code": res["exit_code"],
+            "output": res["stdout"] + "\n" + res["stderr"],
+            "timed_out": res["timed_out"]
         }
-        
-    def _simulate_replay(self, patch: models.Patch | None) -> Tuple[str, dict, dict]:
-        baseline = {
-            "status": "completed",
-            "http_status": 500,
-            "failure_fingerprint": "DATABASE_TIMEOUT",
-            "output": "Simulated Gateway HTTP 500\nPayment Service HTTP 503 DATABASE_TIMEOUT"
-        }
-        
-        if not patch:
-            return "BASELINE_ONLY", baseline, {"status": "skipped"}
-            
-        # Simulate patch application context mismatch check
-        if patch.diff and "process(obj)" in patch.diff:
-            # We assume it applied cleanly in simulation
-            patched = {
-                "status": "completed",
-                "http_status": 200,
-                "failure_fingerprint": None,
-                "output": "Simulated Gateway HTTP 200\nPayment Service HTTP 200"
-            }
-            return "REPLAY_CHANGED_BEHAVIOR", baseline, patched
-        else:
-            patched = {
-                "status": "PATCH_CONTEXT_MISMATCH",
-                "output": "Patch context did not match target files."
-            }
-            return "PATCH_APPLY_FAILED", baseline, patched
-
-    def _cleanup_workspace(self, workspace_dir: str):
-        try:
-            shutil.rmtree(workspace_dir, ignore_errors=True)
-        except Exception as e:
-            logger.error(f"Error cleaning up workspace {workspace_dir}: {e}")

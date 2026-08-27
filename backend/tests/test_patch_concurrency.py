@@ -9,7 +9,8 @@ from app.services.investigation_service import InvestigationService
 def mock_db():
     return MagicMock()
 
-def test_patch_concurrency_integrity_error_recovery(mock_db):
+@patch("app.services.investigation_service.PatchRepository")
+def test_patch_concurrency_integrity_error_recovery(mock_patch_repo_cls, mock_db):
     service = InvestigationService(mock_db)
     
     # Setup mocks
@@ -18,19 +19,18 @@ def test_patch_concurrency_integrity_error_recovery(mock_db):
     service.trace_repo = MagicMock()
     service.file_repo = MagicMock()
     service.inv_repo = MagicMock()
-    service.patch_repo = MagicMock()
     service.memory_service = MagicMock()
     
     # Ensure get_max_patch_number works
-    service.patch_repo.get_max_patch_number.side_effect = [1, 2] # Simulates it returning 1 first, then 2 on retry
+    mock_patch_repo_cls.return_value.get_max_patch_number.side_effect = [1, 2] # Simulates it returning 1 first, then 2 on retry
     
     # We want save to fail once with IntegrityError, then succeed
     def mock_save(*args, **kwargs):
-        if service.patch_repo.save.call_count == 1:
+        if mock_patch_repo_cls.return_value.save.call_count == 1:
             raise IntegrityError("mock error", "mock params", "mock orig")
         return None
         
-    service.patch_repo.save.side_effect = mock_save
+    mock_patch_repo_cls.return_value.save.side_effect = mock_save
     
     # Create fake result
     incident_id = uuid.uuid4()
@@ -53,23 +53,23 @@ def test_patch_concurrency_integrity_error_recovery(mock_db):
     service._persist_investigation(incident_id, result, trace, attempt=1)
     
     # Verifications
-    assert service.patch_repo.save.call_count == 2
-    assert service.patch_repo.get_max_patch_number.call_count == 2
+    assert mock_patch_repo_cls.return_value.save.call_count == 2
+    assert mock_patch_repo_cls.return_value.get_max_patch_number.call_count == 2
     assert mock_db.rollback.call_count == 1
-    assert mock_db.flush.call_count == 2 # 1 for inv_repo.save, 1 for successful patch_repo.save
+    assert mock_db.commit.call_count == 2 # 1 for inv_repo.save, 1 for successful patch_repo.save
 
-def test_patch_concurrency_failure_after_retries(mock_db):
+@patch("app.services.investigation_service.PatchRepository")
+def test_patch_concurrency_failure_after_retries(mock_patch_repo_cls, mock_db):
     service = InvestigationService(mock_db)
     
     # Setup mocks
     service.incident_repo = MagicMock()
     service.inv_repo = MagicMock()
-    service.patch_repo = MagicMock()
     
-    service.patch_repo.get_max_patch_number.return_value = 1
+    mock_patch_repo_cls.return_value.get_max_patch_number.return_value = 1
     
     # Always fail
-    service.patch_repo.save.side_effect = IntegrityError("mock error", "mock params", "mock orig")
+    mock_patch_repo_cls.return_value.save.side_effect = IntegrityError("mock error", "mock params", "mock orig")
     
     incident_id = uuid.uuid4()
     trace = MagicMock()
@@ -91,5 +91,5 @@ def test_patch_concurrency_failure_after_retries(mock_db):
     with pytest.raises(IntegrityError):
         service._persist_investigation(incident_id, result, trace, attempt=1)
         
-    assert service.patch_repo.save.call_count == 3
+    assert mock_patch_repo_cls.return_value.save.call_count == 3
     assert mock_db.rollback.call_count == 3

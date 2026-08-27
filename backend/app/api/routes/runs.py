@@ -1,14 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from app.db.database import get_db
-from app.demo.demo_runner import DemoRunner
+from app.services.workspace_service import WorkspaceService
 from pydantic import BaseModel
 import logging
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-demo_runner = DemoRunner()
 
 
 class RunStateResponse(BaseModel):
@@ -31,7 +30,8 @@ def get_workspace(run_id: str, db: Session = Depends(get_db)):
     Returns the aggregated investigation workspace.
     This replaces dozens of individual UI calls.
     """
-    run_data = demo_runner.get_run_workspace(run_id, db)
+    svc = WorkspaceService(db)
+    run_data = svc.get_run_workspace(run_id)
     if not run_data:
         raise HTTPException(status_code=404, detail="Run not found")
     return run_data
@@ -39,29 +39,45 @@ def get_workspace(run_id: str, db: Session = Depends(get_db)):
 
 @router.get("/{run_id}/agent-events")
 def get_agent_events(run_id: str, db: Session = Depends(get_db)):
-    events = demo_runner.get_events(run_id, db)
+    svc = WorkspaceService(db)
+    events = svc.get_events(run_id)
     return events
 
 
 @router.get("/{run_id}/commands")
 def get_commands(run_id: str, db: Session = Depends(get_db)):
-    commands = demo_runner.get_commands(run_id, db)
+    svc = WorkspaceService(db)
+    commands = svc.get_commands(run_id)
     return commands
 
 
 @router.get("/{run_id}/state", response_model=RunStateResponse)
-def get_run_state(run_id: str):
-    run = demo_runner.get_run(run_id)
-    if not run:
+def get_run_state(run_id: str, db: Session = Depends(get_db)):
+    svc = WorkspaceService(db)
+    ws = svc.get_run_workspace(run_id)
+    if not ws:
         raise HTTPException(status_code=404, detail="Run not found")
-    return run
+    
+    return {
+        "run_id": ws["run"]["id"],
+        "status": ws["run"]["status"],
+        "current_stage": ws["run"]["current_stage"],
+        "mode": ws["run"]["mode"],
+        "stages": {s["id"]: s["status"] for s in ws["stages"]},
+        "results": {
+            "repository": ws.get("repository", {}),
+            "incident": ws.get("incident", {})
+        },
+        "error": ws["run"].get("error")
+    }
 
 
 @router.post("/{run_id}/approve")
 def approve_run(run_id: str, background_tasks: BackgroundTasks):
+    from app.services.orchestrator import CodeGuardianOrchestrator
     try:
-        demo_runner.approve_and_continue(run_id)
-        background_tasks.add_task(demo_runner.continue_after_approval, run_id)
+        orchestrator = CodeGuardianOrchestrator()
+        background_tasks.add_task(orchestrator.continue_after_approval, run_id)
         return {"status": "success", "message": "Approved. Delivery in progress."}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -69,8 +85,15 @@ def approve_run(run_id: str, background_tasks: BackgroundTasks):
 
 @router.post("/{run_id}/reject")
 def reject_run(run_id: str):
+    from app.db.database import SessionLocal
+    from app.db.models import Run
+    from app.engine.run_state_machine import RunState
     try:
-        demo_runner.reject_patch(run_id)
+        with SessionLocal() as db:
+            run = db.query(Run).filter(Run.id == run_id).first()
+            if run:
+                run.state = RunState.REJECTED.value
+                db.commit()
         return {"status": "success"}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -79,7 +102,8 @@ def reject_run(run_id: str):
 @router.post("/{run_id}/changed-files/{file_id}/accept")
 def accept_file(run_id: str, file_id: str, db: Session = Depends(get_db)):
     try:
-        return demo_runner.record_file_decision(run_id, file_id, "accepted", db)
+        svc = WorkspaceService(db)
+        return svc.record_file_decision(run_id, file_id, "accepted")
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -87,7 +111,7 @@ def accept_file(run_id: str, file_id: str, db: Session = Depends(get_db)):
 @router.post("/{run_id}/changed-files/{file_id}/reject")
 def reject_file(run_id: str, file_id: str, db: Session = Depends(get_db)):
     try:
-        return demo_runner.record_file_decision(run_id, file_id, "rejected", db)
+        svc = WorkspaceService(db)
+        return svc.record_file_decision(run_id, file_id, "rejected")
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-

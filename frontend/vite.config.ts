@@ -15,6 +15,11 @@ export default defineConfig(({ mode }) => {
         '/api': {
           target: backend,
           changeOrigin: true,
+          ws: true,
+        },
+        '/health': {
+          target: backend,
+          changeOrigin: true,
         },
       },
     },

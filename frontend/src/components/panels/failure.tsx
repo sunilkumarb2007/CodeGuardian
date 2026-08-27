@@ -230,14 +230,14 @@ export function SourcePanel({
                 {active.content}
               </pre>
             ) : (
-              <p className="mt-4 font-mono text-xs text-ink-500">file content not reported</p>
+              <p className="mt-4 font-mono text-xs text-ink-500">CONTENT PENDING</p>
             )}
           </div>
           <div className="bg-ink-850 p-6">
             <p className="eyebrow">What&apos;s wrong</p>
             <p className="mt-4 text-sm leading-relaxed text-white">
               {investigation?.rootCause ?? (
-                <span className="font-mono text-xs text-ink-500">not reported</span>
+                <span className="font-mono text-xs text-ink-500">PENDING</span>
               )}
             </p>
             {investigation?.confidence !== undefined ? (

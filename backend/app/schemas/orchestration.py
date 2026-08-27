@@ -48,3 +48,10 @@ class OrchestrationRunState(BaseModel):
     error: Optional[str] = None
     
     model_config = ConfigDict(from_attributes=True)
+
+class DeliveryResult(BaseModel):
+    status: str
+    pr_url: Optional[str] = None
+    error_details: Optional[str] = None
+    
+    model_config = ConfigDict(from_attributes=True)

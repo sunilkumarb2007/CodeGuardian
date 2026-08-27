@@ -51,7 +51,7 @@ export function RepositoryPanel({ repository }: { repository?: Repository }) {
             </div>
             <p className="eyebrow mt-8">Services</p>
             {repository.services.length === 0 ? (
-              <p className="mt-3 font-mono text-xs text-ink-500">not reported</p>
+              <p className="mt-3 font-mono text-xs text-ink-500">PENDING</p>
             ) : (
               <div className="mt-3 flex flex-wrap gap-2">
                 {repository.services.map((service) => (

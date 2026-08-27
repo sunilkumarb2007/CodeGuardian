@@ -1,3 +1,4 @@
+from datetime import timezone
 import logging
 from uuid import UUID
 from app.schemas.orchestration import TriageDecision
@@ -53,11 +54,11 @@ class TriageService:
                     incident_id=incident_id,
                     service_name="test_runner",
                     event_type="test",
-                    timestamp=datetime.utcnow(),
+                    timestamp=datetime.now(timezone.utc),
                     error_message=inspection_result.failure_output[:2000] if inspection_result.failure_output else "Unknown error",
                     stack_trace=stack_trace,
                     event_metadata=inspection_result.static_analysis_details if getattr(inspection_result, "static_analysis_details", None) else {"stdout": inspection_result.failure_output},
-                    created_at=datetime.utcnow()
+                    created_at=datetime.now(timezone.utc)
                 )
                 db.add(evidence)
                 db.flush()
@@ -107,11 +108,11 @@ class TriageService:
                         incident_id=incident_id,
                         service_name=svc_name,
                         event_type="log",
-                        timestamp=datetime.utcnow(),
+                        timestamp=datetime.now(timezone.utc),
                         error_message=failure_summary,
                         stack_trace=stack_trace,
                         event_metadata=inspection_result.static_analysis_details,
-                        created_at=datetime.utcnow()
+                        created_at=datetime.now(timezone.utc)
                     )
                     db.add(evidence)
                     db.flush()

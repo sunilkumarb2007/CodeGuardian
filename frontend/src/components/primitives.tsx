@@ -120,10 +120,10 @@ export function Metric({
       <p className="eyebrow">{label}</p>
       <p
         className={`mt-2 font-display text-lg font-bold tracking-tight ${
-          accent ? 'text-lime' : value === undefined ? 'text-ink-500' : 'text-white'
+          accent ? 'text-lime' : value === undefined ? 'text-ink-500 font-mono text-xs' : 'text-white'
         }`}
       >
-        {value ?? 'NOT REPORTED'}
+        {value ?? 'PENDING'}
       </p>
     </div>
   )
@@ -134,9 +134,9 @@ export function KeyValue({ label, value }: { label: string; value?: string | num
     <div className="flex items-baseline justify-between gap-6 border-b border-ink-700 py-3 last:border-b-0">
       <span className="eyebrow">{label}</span>
       <span
-        className={`text-right font-mono text-[13px] ${value === undefined ? 'text-ink-500' : 'text-white'}`}
+        className={`text-right font-mono text-[13px] ${value === undefined ? 'text-ink-500 text-xs' : 'text-white'}`}
       >
-        {value ?? 'not reported'}
+        {value ?? 'PENDING'}
       </span>
     </div>
   )

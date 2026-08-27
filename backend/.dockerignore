@@ -1,0 +1,14 @@
+.env
+.git
+node_modules
+__pycache__
+.pytest_cache
+.venv
+venv
+workspace/runs
+workspace/repositories
+dist
+build
+logs
+*.pyc
+*.pyo

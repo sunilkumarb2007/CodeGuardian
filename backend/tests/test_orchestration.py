@@ -4,7 +4,7 @@ from app.services.inspection_service import RepositoryInspectionService
 from app.schemas.orchestration import ArchitectureSummary
 
 @patch("app.services.inspection_service.RepositoryInspectionService._clone_repo")
-@patch("app.services.inspection_service.subprocess.run")
+@patch("app.services.inspection_service.CommandExecutionService.execute_command")
 @patch("app.services.inspection_service.os.path.exists")
 def test_inspect_repository(mock_exists, mock_run, mock_clone):
     # Mock os.path.exists to simulate a Python project with requirements.txt
@@ -14,7 +14,7 @@ def test_inspect_repository(mock_exists, mock_run, mock_clone):
         return False
         
     mock_exists.side_effect = fake_exists
-    mock_run.return_value = MagicMock(returncode=0)
+    mock_run.return_value = {'exit_code': 0, 'stdout': '', 'stderr': ''}
     mock_clone.return_value = None
     
     svc = RepositoryInspectionService(token="fake_token")

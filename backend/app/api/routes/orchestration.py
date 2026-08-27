@@ -1,10 +1,14 @@
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from datetime import timezone
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from typing import Optional
 import uuid
 
-from app.services.orchestrator import CodeGuardianOrchestrator, RUN_STATE
+from app.services.orchestrator import CodeGuardianOrchestrator
 from app.schemas.orchestration import OrchestrationRunState
+from app.db.database import get_db, SessionLocal
+from app.db.models import Run
+from sqlalchemy.orm import Session
 
 router = APIRouter()
 
@@ -18,13 +22,8 @@ class OrchestrationResponse(BaseModel):
 
 @router.post("/run", response_model=OrchestrationResponse)
 def start_orchestration(req: OrchestrationRequest, background_tasks: BackgroundTasks):
-    run_id = str(uuid.uuid4())
-    
-    if "github.com" not in req.repository_url:
-        raise HTTPException(status_code=400, detail="Only GitHub URLs are supported.")
-        
     orchestrator = CodeGuardianOrchestrator()
-    orchestrator.initialize_run(run_id, req.repository_url)
+    run_id = orchestrator.initialize_run(req.repository_url)
     
     background_tasks.add_task(
         orchestrator.execute_pipeline, 
@@ -36,23 +35,73 @@ def start_orchestration(req: OrchestrationRequest, background_tasks: BackgroundT
     return OrchestrationResponse(run_id=run_id, status="started")
 
 @router.get("/runs/{run_id}", response_model=OrchestrationRunState)
-def get_run_status(run_id: str):
-    if run_id not in RUN_STATE:
+def get_run_status(run_id: str, db: Session = Depends(get_db)):
+    run = db.query(Run).filter(Run.id == run_id).first()
+    if not run:
         raise HTTPException(status_code=404, detail="Run not found")
-    return RUN_STATE[run_id]
+    
+    repo_url = ""
+    if run.repository_id:
+        from app.db.models import Repository
+        repo = db.query(Repository).filter(Repository.id == run.repository_id).first()
+        if repo:
+            repo_url = repo.repository_url
+            
+    return {
+        "run_id": run.id,
+        "repository_url": repo_url,
+        "status": run.state,
+        "current_stage": run.current_stage,
+        "stages": {},
+        "results": {},
+        "error": run.error_message
+    }
 
 @router.get("/runs/{run_id}/result")
-def get_run_result(run_id: str):
-    if run_id not in RUN_STATE:
+def get_run_result(run_id: str, db: Session = Depends(get_db)):
+    run = db.query(Run).filter(Run.id == run_id).first()
+    if not run:
         raise HTTPException(status_code=404, detail="Run not found")
-    state = RUN_STATE[run_id]
     
-    if state["status"] in ["running", "started", "pending"]:
+    if run.state in ["running", "started", "pending", "CREATED", "REPOSITORY_LOADING"]:
         raise HTTPException(status_code=400, detail="Run not yet completed")
         
     return {
-        "run_id": run_id,
-        "status": state["status"],
-        "results": state["results"],
-        "error": state.get("error")
+        "run_id": run.id,
+        "status": run.state,
+        "results": {},
+        "error": run.error_message
     }
+
+class ApprovalRequest(BaseModel):
+    action: str
+    reason: Optional[str] = None
+
+@router.post("/runs/{run_id}/approval")
+def handle_approval(run_id: str, req: ApprovalRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    run = db.query(Run).filter(Run.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+        
+    if run.state != "WAITING_FOR_APPROVAL":
+        raise HTTPException(status_code=400, detail="Run is not waiting for approval")
+        
+    if req.action == "approve":
+        from app.engine.run_state_machine import RunState
+        run.state = RunState.PATCH_APPROVED.value
+        db.commit()
+        
+        orchestrator = CodeGuardianOrchestrator()
+        background_tasks.add_task(orchestrator.continue_after_approval, run_id)
+        return {"status": "PATCH_APPROVED"}
+    elif req.action == "reject":
+        from app.engine.run_state_machine import RunState
+        from datetime import datetime
+        run.state = RunState.REJECTED.value
+        run.current_stage = RunState.REJECTED.value
+        run.error_message = req.reason
+        run.terminal_at = datetime.now(timezone.utc)
+        db.commit()
+        return {"status": "REJECTED"}
+    else:
+        raise HTTPException(status_code=400, detail="Invalid action")

@@ -88,7 +88,7 @@ export function InvestigationPanel({ investigation }: { investigation?: Investig
           <div className="bg-ink-800 p-7">
             <p className="eyebrow">Root cause</p>
             <p className="mt-3 text-sm leading-relaxed text-white">
-              {investigation.rootCause ?? <span className="font-mono text-xs text-ink-500">not reported</span>}
+              {investigation.rootCause ?? <span className="font-mono text-xs text-ink-500">PENDING</span>}
             </p>
             {investigation.evidence.length > 0 ? (
               <>
@@ -168,9 +168,9 @@ export function PatchPanel({ patch }: { patch?: Patch }) {
         <EmptyState message="No patch reported yet" />
       ) : (
         <div className="px-7 py-7">
-          <p className="font-mono text-sm text-white">{patch.file ?? 'file not reported'}</p>
+          <p className="font-mono text-sm text-white">{patch.file ?? 'FILE PENDING'}</p>
           <div className="mt-5">
-            {patch.diff ? <DiffBlock diff={patch.diff} /> : <p className="font-mono text-xs text-ink-500">diff not reported</p>}
+            {patch.diff ? <DiffBlock diff={patch.diff} /> : <p className="font-mono text-xs text-ink-500">DIFF PENDING</p>}
           </div>
           <div className="mt-7 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             <Metric label="Files changed" value={patch.filesChanged} />
@@ -201,7 +201,7 @@ function ReplayCard({ side, tone }: { side?: ReplaySide; tone: 'fail' | 'pass' }
         {side?.httpStatus !== undefined ? `HTTP ${side.httpStatus}` : '—'}
       </p>
       <p className={`mt-4 font-mono text-sm ${passTone ? 'text-ink-900/80' : 'text-signal-pink'}`}>
-        {side?.outcome ?? 'not reported'}
+        {side?.outcome ?? 'PENDING'}
       </p>
       {side?.detail ? (
         <p className={`mt-3 text-sm ${passTone ? 'text-ink-900/70' : 'text-ink-300'}`}>{side.detail}</p>
@@ -241,7 +241,7 @@ export function ReplayPanel({ replay }: { replay?: Replay }) {
                 ? 'Changed'
                 : replay.behaviorChanged === false
                   ? 'Unchanged'
-                  : 'Not reported'}
+                  : 'PENDING'}
             </span>
           </div>
           {replay.summary ? <p className="mt-4 text-sm text-ink-300">{replay.summary}</p> : null}
@@ -348,7 +348,7 @@ export function DeliveryPanel({ delivery }: { delivery?: Delivery }) {
             <p className="font-mono text-[11px] uppercase tracking-[0.28em] text-ink-900/60">
               Pull request
             </p>
-            <p className="display-md mt-3">{delivery.pullRequestRef ?? 'NOT REPORTED'}</p>
+            <p className="display-md mt-3">{delivery.pullRequestRef ?? 'PENDING'}</p>
             {delivery.note ? (
               <p className="mt-4 text-sm font-medium text-ink-900/70">{delivery.note}</p>
             ) : null}
@@ -455,7 +455,7 @@ export function CommandResultPanel({
         }
       />
       {!result ? (
-        <EmptyState message="Not reported yet" />
+        <EmptyState message="PENDING" />
       ) : (
         <div className="px-7 py-7">
           {result.command ? (

@@ -1,3 +1,4 @@
+from datetime import timezone
 import pytest
 from datetime import datetime, timedelta
 import uuid
@@ -13,7 +14,7 @@ def create_event(service, event_type, status_code=None, error_code=None, req_id=
         status_code=status_code,
         error_code=error_code,
         request_id=req_id,
-        timestamp=datetime.utcnow() + timedelta(seconds=time_offset)
+        timestamp=datetime.now(timezone.utc) + timedelta(seconds=time_offset)
     )
 
 def test_ghosttrace_scenario_1_clear_chain():
@@ -101,7 +102,7 @@ def test_ghosttrace_scenario_6_missing_metadata():
     engine = GhostTraceEngine()
     # Empty events
     events = [
-        EvidenceEvent(id=uuid.uuid4(), event_type="test", timestamp=datetime.utcnow())
+        EvidenceEvent(id=uuid.uuid4(), event_type="test", timestamp=datetime.now(timezone.utc))
     ]
     result = engine.reconstruct(events)
     assert result.status == "partial"

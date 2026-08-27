@@ -1,0 +1,62 @@
+services:
+
+  postgres:
+    image: postgres:17
+    container_name: codeguardian-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: codeguardian_db
+      POSTGRES_USER: codeguardian
+      POSTGRES_PASSWORD: codeguardian_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - codeguardian_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U codeguardian -d codeguardian_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis/redis-stack-server:latest
+    container_name: codeguardian-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - codeguardian_redis_data:/data
+    command: >
+      redis-stack-server
+      --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: codeguardian-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+psycopg2://codeguardian:codeguardian_password@postgres:5432/codeguardian_db
+      - REDIS_URL=redis://redis:6379/0
+      # Provide other env vars like OPENROUTER_API_KEY from environment or .env file
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - /app/workspace
+      - /app/.venv
+
+volumes:
+  codeguardian_postgres_data:
+  codeguardian_redis_data:

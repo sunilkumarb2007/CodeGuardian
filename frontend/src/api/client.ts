@@ -6,11 +6,27 @@ export const API_BASE_URL = RAW_BASE.replace(/\/+$/, '')
 
 export class ApiError extends Error {
   readonly status: number
+  readonly title: string
+  readonly statusText: string
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, title?: string, statusText?: string) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    this.statusText = statusText ?? (status === 0 ? 'Backend connection unavailable' : `HTTP ${status}`)
+    this.title = title ?? (
+      status === 0
+        ? 'Investigation unavailable'
+        : status === 400 || status === 422
+          ? 'Invalid repository request'
+          : status === 401 || status === 403
+            ? 'Authorization required'
+            : status === 404
+              ? 'Endpoint or repository not found'
+              : status >= 500
+                ? 'Investigation service error'
+                : 'Investigation unavailable'
+    )
   }
 }
 
@@ -23,8 +39,10 @@ async function request(path: string, init?: RequestInit): Promise<unknown> {
     })
   } catch {
     throw new ApiError(
-      `Cannot reach the CodeGuardian backend at ${API_BASE_URL || window.location.origin}.`,
+      `Cannot reach the CodeGuardian backend at ${API_BASE_URL || window.location.origin}. Please ensure the backend server is running.`,
       0,
+      'Investigation unavailable',
+      'Backend connection unavailable',
     )
   }
 
@@ -33,7 +51,30 @@ async function request(path: string, init?: RequestInit): Promise<unknown> {
 
   if (!response.ok) {
     const detail = readString(asRecord(payload), 'detail', 'message', 'error')
-    throw new ApiError(detail ?? `${response.status} ${response.statusText}`, response.status)
+    let title = 'Investigation unavailable'
+    let statusText = `HTTP ${response.status}`
+
+    if (response.status === 400 || response.status === 422) {
+      title = 'Invalid repository request'
+      statusText = `Validation error · ${response.status}`
+    } else if (response.status === 401 || response.status === 403) {
+      title = 'Authorization required'
+      statusText = `Auth error · ${response.status}`
+    } else if (response.status === 404) {
+      title = 'Endpoint or repository not found'
+      statusText = `Not found · 404`
+    } else if (response.status >= 500) {
+      title = 'Investigation service error'
+      statusText = `Server error · ${response.status}`
+    }
+
+    const message = detail || (
+      response.status >= 500 
+        ? 'The backend encountered an internal error while processing the request.'
+        : `${response.status} ${response.statusText}`
+    )
+
+    throw new ApiError(message, response.status, title, statusText)
   }
 
   return payload
@@ -48,14 +89,14 @@ function safeParse(text: string): unknown {
 }
 
 export function startRun(repositoryUrl: string): Promise<unknown> {
-  return request('/api/demo/run', {
+  return request('/api/orchestration/run', {
     method: 'POST',
     body: JSON.stringify({ repository_url: repositoryUrl }),
   })
 }
 
 export function getRun(runId: string): Promise<unknown> {
-  return request(`/api/demo/runs/${encodeURIComponent(runId)}`)
+  return request(`/api/runs/${encodeURIComponent(runId)}/state`)
 }
 
 /** Full investigation workspace: every stage, artefact, event and command of a run. */
@@ -75,7 +116,7 @@ export function setChangedFileDecision(
 }
 
 export function getRunResult(runId: string): Promise<unknown> {
-  return request(`/api/demo/runs/${encodeURIComponent(runId)}/result`)
+  return request(`/api/orchestration/runs/${encodeURIComponent(runId)}/result`)
 }
 
 export function approveRun(runId: string): Promise<unknown> {
