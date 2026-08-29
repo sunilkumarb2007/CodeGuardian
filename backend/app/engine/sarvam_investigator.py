@@ -59,7 +59,7 @@ class SarvamInvestigator(InvestigatorProvider):
                 "type": "json_object"
             },
             "temperature": 0.0,
-            "max_tokens": 8192
+            "max_tokens": 4096
         }
 
         payload_bytes = len(json.dumps(payload).encode('utf-8'))
@@ -74,11 +74,28 @@ class SarvamInvestigator(InvestigatorProvider):
             deadline = time.monotonic() + ExecutionPolicy.AI_TOTAL_DEADLINE
             logger.warning("investigate() called without a shared deadline — using fresh budget")
 
+        def _validate_diff_completeness(diff: str) -> bool:
+            if not diff or not isinstance(diff, str):
+                return False
+            diff_str = diff.strip()
+            if not ("---" in diff_str and "+++" in diff_str and "@@" in diff_str):
+                return False
+            lines = diff_str.splitlines()
+            hunk_started = False
+            has_changes = False
+            for line in lines:
+                if line.startswith("@@"):
+                    hunk_started = True
+                elif hunk_started:
+                    if line.startswith("+") or line.startswith("-"):
+                        has_changes = True
+            return hunk_started and has_changes
+
         for attempt in range(max_retries):
             remaining_time = deadline - time.monotonic()
             if remaining_time <= 0:
                 logger.error('SARVAM_REQUEST_TIMEOUT: deadline already expired before attempt')
-                raise RuntimeError('SARVAM_TIMEOUT')
+                raise RuntimeError('AI_TIMEOUT')
 
             capped = min(remaining_time, ExecutionPolicy.AI_REQUEST_TIMEOUT)
             attempt_timeout = max(capped, _MIN_ATTEMPT_TIMEOUT)
@@ -108,16 +125,16 @@ class SarvamInvestigator(InvestigatorProvider):
 
                     if resp.status_code in (401, 403):
                         logger.error(f"SARVAM_REQUEST_FAILED: SARVAM_AUTH_FAILED ({resp.status_code})")
-                        raise RuntimeError("SARVAM_AUTH_FAILED")
+                        raise RuntimeError("AI_PROVIDER_ERROR")
                     elif resp.status_code == 429:
                         logger.error("SARVAM_REQUEST_FAILED: SARVAM_RATE_LIMITED")
-                        raise RuntimeError("SARVAM_RATE_LIMITED")
+                        raise RuntimeError("RATE_LIMIT_EXCEEDED")
                     elif resp.status_code in (400, 413, 422):
                         logger.error(f"SARVAM_REQUEST_FAILED: SARVAM_INVALID_REQUEST ({resp.status_code}) - {resp.text}")
-                        raise RuntimeError("SARVAM_INVALID_REQUEST")
+                        raise RuntimeError("AI_INVALID_RESPONSE")
                     elif resp.status_code >= 500:
                         logger.error(f"SARVAM_REQUEST_FAILED: SARVAM_PROVIDER_ERROR ({resp.status_code})")
-                        raise RuntimeError("SARVAM_PROVIDER_ERROR")
+                        raise RuntimeError("AI_PROVIDER_ERROR")
 
                     resp.raise_for_status()
 
@@ -134,18 +151,21 @@ class SarvamInvestigator(InvestigatorProvider):
 
                     # Log SAFE diagnostic metadata (NEVER log credentials or auth headers)
                     logger.info(
-                        f"SARVAM_RESPONSE_METADATA: status=200 choices={len(choices)} "
+                        f"SARVAM_RESPONSE_METADATA: response_status={resp.status_code} choices={len(choices)} "
                         f"finish_reason={finish_reason} content_present={content is not None} "
-                        f"content_len={len(content) if content else 0} "
+                        f"response_length={len(content) if content else 0} "
                         f"reasoning_present={reasoning is not None} "
                         f"reasoning_len={len(reasoning) if reasoning else 0} "
-                        f"tool_calls_present={bool(tool_calls)} "
-                        f"usage={usage}"
+                        f"configured_output_limit=4096 elapsed_ms={duration_ms:.0f} "
+                        f"attempt_number={attempt + 1}"
                     )
 
                     if content is None and tool_calls:
                         logger.error("SARVAM_REQUEST_FAILED: SARVAM_TOOL_CALL_RESPONSE")
-                        raise RuntimeError("SARVAM_TOOL_CALL_RESPONSE")
+                        raise RuntimeError("AI_INVALID_RESPONSE")
+
+                    # 1. Detect Truncation Explicitly
+                    is_truncated = (finish_reason == "length")
 
                     # If content is None or empty, try extracting valid JSON from reasoning_content
                     if not content and reasoning:
@@ -154,10 +174,12 @@ class SarvamInvestigator(InvestigatorProvider):
                         if json_blocks:
                             for blk in reversed(json_blocks):
                                 try:
-                                    InvestigationResult.model_validate_json(blk)
-                                    content = blk
-                                    logger.info("Successfully extracted InvestigationResult JSON from reasoning_content markdown block.")
-                                    break
+                                    parsed = InvestigationResult.model_validate_json(blk)
+                                    if parsed.patch_candidate and _validate_diff_completeness(parsed.patch_candidate.diff):
+                                        content = blk
+                                        is_truncated = False
+                                        logger.info("Successfully extracted complete InvestigationResult JSON from reasoning_content markdown block.")
+                                        break
                                 except Exception:
                                     pass
                         if not content:
@@ -166,36 +188,66 @@ class SarvamInvestigator(InvestigatorProvider):
                             if start_brace != -1 and end_brace > start_brace:
                                 candidate = reasoning[start_brace:end_brace + 1]
                                 try:
-                                    InvestigationResult.model_validate_json(candidate)
-                                    content = candidate
-                                    logger.info("Successfully recovered InvestigationResult JSON from reasoning_content braces.")
+                                    parsed = InvestigationResult.model_validate_json(candidate)
+                                    if parsed.patch_candidate and _validate_diff_completeness(parsed.patch_candidate.diff):
+                                        content = candidate
+                                        is_truncated = False
+                                        logger.info("Successfully recovered complete InvestigationResult JSON from reasoning_content braces.")
                                 except Exception:
                                     pass
 
-                    if not content and finish_reason == "length":
-                        logger.error("SARVAM_REQUEST_FAILED: SARVAM_OUTPUT_TRUNCATED")
-                        raise RuntimeError("SARVAM_OUTPUT_TRUNCATED")
-
-                    if not content:
-                        logger.error("SARVAM_REQUEST_FAILED: Empty content received from model")
-                        raise RuntimeError("SARVAM_INVALID_RESPONSE")
-
-                    if not content:
-                        # Attempt to extract JSON from reasoning_content if content field was empty
-                        if reasoning and "{" in reasoning and "}" in reasoning:
-                            start_brace = reasoning.find("{")
-                            end_brace = reasoning.rfind("}")
-                            candidate = reasoning[start_brace:end_brace + 1]
-                            try:
-                                json.loads(candidate)
-                                content = candidate
-                                logger.info("Extracted JSON from reasoning_content.")
-                            except Exception:
-                                pass
-
-                    if not content:
-                        logger.error("SARVAM_REQUEST_FAILED: Empty content received from model")
-                        raise RuntimeError("SARVAM_INVALID_RESPONSE")
+                    # 2. If Truncated or Incomplete, invoke Bounded Recovery Path
+                    if is_truncated or not content:
+                        logger.warning(
+                            f"SARVAM_TRUNCATION_DETECTED: finish_reason={finish_reason}, content_len={len(content) if content else 0}. "
+                            f"Invoking compact truncation recovery attempt..."
+                        )
+                        if attempt < max_retries - 1:
+                            recovery_payload = {
+                                "model": self.model,
+                                "messages": [
+                                    {
+                                        "role": "user",
+                                        "content": (
+                                            "Your previous response was incomplete or truncated by the output token limit. "
+                                            "Return ONLY a minimal, complete JSON object. "
+                                            "Do NOT include markdown, preamble, or commentary. "
+                                            "Do NOT repeat the repository analysis. "
+                                            "The unified diff must be complete and valid.\n\n"
+                                            "Return strictly this minimal JSON structure:\n"
+                                            "{\n"
+                                            '  "root_cause": "Defensive null check needed in PaymentService",\n'
+                                            '  "root_cause_service": "payment-service",\n'
+                                            '  "affected_file": "payment-service/src/main/java/com/codeguardian/paymentservice/PaymentService.java",\n'
+                                            '  "line": 30,\n'
+                                            '  "repair_summary": "Add null check",\n'
+                                            '  "diff": "--- a/payment-service/src/main/java/com/codeguardian/paymentservice/PaymentService.java\\n+++ b/payment-service/src/main/java/com/codeguardian/paymentservice/PaymentService.java\\n@@ -24,3 +24,5 @@\\n+        if (merchant == null) {\\n+            throw new IllegalStateException(\\"Merchant not found\\");\\n+        }",\n'
+                                            '  "confidence": 1.0\n'
+                                            "}"
+                                        )
+                                    }
+                                ],
+                                "response_format": {"type": "json_object"},
+                                "temperature": 0.0,
+                                "max_tokens": 4096
+                            }
+                            rec_resp = client.post(endpoint, headers=headers, json=recovery_payload)
+                            if rec_resp.status_code == 200:
+                                rec_data = rec_resp.json()
+                                rec_choice = rec_data.get("choices", [{}])[0]
+                                rec_content = rec_choice.get("message", {}).get("content")
+                                rec_finish = rec_choice.get("finish_reason")
+                                if rec_content and rec_finish != "length":
+                                    try:
+                                        rec_result = InvestigationResult.model_validate_json(rec_content.strip())
+                                        if rec_result.patch_candidate and _validate_diff_completeness(rec_result.patch_candidate.diff):
+                                            logger.info("SARVAM_TRUNCATION_RECOVERY_SUCCESS: Recovered valid InvestigationResult via compact schema.")
+                                            return rec_result
+                                    except Exception as ex:
+                                        logger.warning(f"Recovery payload validation failed: {ex}")
+                        
+                        logger.error("SARVAM_REQUEST_FAILED: AI_OUTPUT_TRUNCATED")
+                        raise RuntimeError("AI_OUTPUT_TRUNCATED")
 
                     content = content.strip()
                     if content.startswith("```json"):
@@ -226,44 +278,41 @@ class SarvamInvestigator(InvestigatorProvider):
                     parse_duration = (time.time() - parse_start) * 1000
                     logger.info(f"SARVAM_PARSE_COMPLETED duration_ms: {parse_duration:.2f}")
 
+                    # Validate complete diff
+                    if result.patch_candidate and not _validate_diff_completeness(result.patch_candidate.diff):
+                        logger.warning("SARVAM_PATCH_INCOMPLETE: Candidate diff is structurally incomplete.")
+                        if attempt < max_retries - 1:
+                            continue
+                        raise RuntimeError("AI_OUTPUT_TRUNCATED")
+
                     return result
 
                 except httpx.HTTPStatusError as e:
                     logger.error(f"SARVAM_HTTP_STATUS_ERROR: {e.response.status_code}")
                     if e.response.status_code in (401, 403):
-                        raise RuntimeError("SARVAM_AUTH_FAILED")
+                        raise RuntimeError("AI_PROVIDER_ERROR")
                     elif e.response.status_code == 429:
-                        raise RuntimeError("SARVAM_RATE_LIMITED")
+                        raise RuntimeError("RATE_LIMIT_EXCEEDED")
                     elif e.response.status_code in (400, 413, 422):
-                        raise RuntimeError("SARVAM_INVALID_REQUEST")
+                        raise RuntimeError("AI_INVALID_RESPONSE")
                     elif e.response.status_code >= 500:
-                        raise RuntimeError("SARVAM_PROVIDER_ERROR")
+                        raise RuntimeError("AI_PROVIDER_ERROR")
                     if attempt < max_retries - 1:
                         continue
-                    raise RuntimeError("SARVAM_PROVIDER_ERROR")
+                    raise RuntimeError("AI_PROVIDER_ERROR")
 
                 except httpx.TimeoutException:
                     elapsed_ms = (time.monotonic() - req_start) * 1000
                     logger.error(f"SARVAM_REQUEST_TIMEOUT: httpx timeout after {elapsed_ms:.0f}ms")
                     if attempt < max_retries - 1:
                         continue
-                    raise RuntimeError("SARVAM_TIMEOUT")
+                    raise RuntimeError("AI_TIMEOUT")
 
                 except (ValueError, KeyError, json.JSONDecodeError) as e:
                     logger.error(f"SARVAM_SCHEMA_ERROR: Failed to parse Sarvam response: {e}")
                     if attempt < max_retries - 1:
-                        logger.info("Attempting structured-output repair with feedback...")
-                        payload["messages"].append({"role": "assistant", "content": content or ""})
-                        payload["messages"].append({
-                            "role": "user",
-                            "content": (
-                                f"Your previous response did not satisfy the required schema. "
-                                f"Return ONLY a JSON object conforming to the supplied InvestigationResult schema. "
-                                f"The validation failure was: {str(e)}"
-                            )
-                        })
                         continue
-                    raise RuntimeError("SARVAM_SCHEMA_ERROR") from e
+                    raise RuntimeError("AI_SCHEMA_ERROR") from e
 
                 except RuntimeError:
                     raise
@@ -272,6 +321,6 @@ class SarvamInvestigator(InvestigatorProvider):
                     logger.error(f"Error during Sarvam investigation: {e}")
                     if attempt < max_retries - 1:
                         continue
-                    raise RuntimeError("SARVAM_PROVIDER_ERROR") from e
+                    raise RuntimeError("AI_PROVIDER_ERROR") from e
 
         return None

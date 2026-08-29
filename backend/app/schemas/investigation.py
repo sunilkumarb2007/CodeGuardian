@@ -172,26 +172,30 @@ class InvestigationResult(BaseModel):
             
         # If root_cause is string at top-level
         rc = data.get("root_cause") or data.get("rootCause")
+        service_name = data.get("root_cause_service") or data.get("service") or "payment-service"
+        affected_file = data.get("affected_file") or data.get("file_path") or data.get("affectedFile")
+        line_no = data.get("line") or data.get("line_number")
+        
         if isinstance(rc, str):
             data["root_cause"] = {
-                "service": "payment-service",
+                "service": service_name,
                 "summary": rc,
-                "affected_file": data.get("file_path") or data.get("affected_file"),
-                "location": f"{data.get('file_path')}:{data.get('line_number')}" if data.get("file_path") and data.get("line_number") else None,
+                "affected_file": affected_file,
+                "location": f"{affected_file}:{line_no}" if affected_file and line_no else affected_file,
                 "confidence": data.get("confidence", 1.0)
             }
             
         # If patch_candidate is missing or has missing fields, inherit file_path from root
         pc = data.get("patch_candidate") or data.get("patchCandidate")
         if isinstance(pc, dict):
-            if not pc.get("files_changed") and not pc.get("filesChanged") and data.get("file_path"):
-                pc["files_changed"] = [data["file_path"]]
+            if not pc.get("files_changed") and not pc.get("filesChanged") and affected_file:
+                pc["files_changed"] = [affected_file]
             data["patch_candidate"] = pc
-        elif not pc and (data.get("snippet") or data.get("diff") or data.get("fix")):
+        elif not pc and (data.get("diff") or data.get("snippet") or data.get("fix")):
             data["patch_candidate"] = {
-                "files_changed": [data.get("file_path")] if data.get("file_path") else [],
+                "files_changed": [affected_file] if affected_file else [],
                 "diff": data.get("diff") or data.get("snippet") or data.get("fix"),
-                "explanation": data.get("description") or "Automated defensive fix"
+                "explanation": data.get("repair_summary") or data.get("description") or "Automated defensive fix"
             }
             
         return data

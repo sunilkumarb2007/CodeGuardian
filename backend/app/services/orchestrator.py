@@ -281,19 +281,30 @@ class CodeGuardianOrchestrator:
                     )
 
                     if inv_result.status != "completed":
-                        if inv_result.status == "timeout":
-                            machine.force_fail(RunState.INVESTIGATION_TIMEOUT, "Total AI deadline exceeded")
-                            update_run_state(RunState.INVESTIGATION_TIMEOUT, error_code="TIMEOUT", error_msg="Total AI deadline exceeded")
+                        if inv_result.status in ("AI_OUTPUT_TRUNCATED", "SARVAM_OUTPUT_TRUNCATED"):
+                            emit_event("STATUS", "Stage 8 FAILED: AI output was truncated by token budget")
+                            emit_event("ANALYSIS", "AI output was incomplete. CodeGuardian could not safely generate a complete repair.")
+                            machine.transition_to(RunState.INVESTIGATION_FAILED)
+                            update_run_state(
+                                RunState.INVESTIGATION_FAILED,
+                                error_code="AI_OUTPUT_TRUNCATED",
+                                error_msg="AI output was incomplete. CodeGuardian could not safely generate a complete repair."
+                            )
                             return
-                        elif "schema" in inv_result.status.lower():
+                        elif inv_result.status in ("AI_TIMEOUT", "timeout"):
+                            emit_event("STATUS", "Stage 8 FAILED: Total AI deadline exceeded")
+                            machine.force_fail(RunState.INVESTIGATION_TIMEOUT, "Total AI deadline exceeded")
+                            update_run_state(RunState.INVESTIGATION_TIMEOUT, error_code="AI_TIMEOUT", error_msg="Total AI deadline exceeded")
+                            return
+                        elif inv_result.status in ("AI_SCHEMA_ERROR", "INVESTIGATION_SCHEMA_ERROR") or "schema" in inv_result.status.lower():
                             prior_failure_evidence.append({
                                  "attempt": attempt,
                                  "stage": "INVESTIGATION_SCHEMA",
-                                 "error": f"AI response did not match required JSON schema. Ensure the response is ONLY a JSON object with no leading/trailing prose."
+                                 "error": "AI response did not match required JSON schema. Return strictly the compact JSON contract."
                             })
                             emit_event("ANALYSIS", f"Schema validation issue on attempt {attempt}. Retrying with structured error context.")
                             machine.transition_to(RunState.INVESTIGATION_SCHEMA_ERROR)
-                            update_run_state(RunState.INVESTIGATION_SCHEMA_ERROR)
+                            update_run_state(RunState.INVESTIGATION_SCHEMA_ERROR, error_code="AI_SCHEMA_ERROR", error_msg="Model output failed structured schema validation")
                             if attempt < max_attempts:
                                 continue
                             return
@@ -306,7 +317,7 @@ class CodeGuardianOrchestrator:
                             emit_event("ANALYSIS", f"Unsafe patch path on attempt {attempt}. Retrying with path constraints.")
                             machine.transition_to(RunState.PATCH_GENERATED)
                             machine.transition_to(RunState.PATCH_PATH_UNSAFE)
-                            update_run_state(RunState.PATCH_PATH_UNSAFE)
+                            update_run_state(RunState.PATCH_PATH_UNSAFE, error_code="PATCH_PATH_UNSAFE", error_msg="Patch contained an unsafe file path")
                             if attempt < max_attempts:
                                 continue
                             return
@@ -319,13 +330,13 @@ class CodeGuardianOrchestrator:
                             emit_event("ANALYSIS", f"Invalid patch context on attempt {attempt}. Retrying with exact source files.")
                             machine.transition_to(RunState.PATCH_GENERATED)
                             machine.transition_to(RunState.PATCH_CONTEXT_INVALID)
-                            update_run_state(RunState.PATCH_CONTEXT_INVALID)
+                            update_run_state(RunState.PATCH_CONTEXT_INVALID, error_code="PATCH_CONTEXT_INVALID", error_msg="Patch context invalid: file not in repository")
                             if attempt < max_attempts:
                                 continue
                             return
-                        elif "OPENROUTER" in inv_result.status or "RATE_LIMITED" in inv_result.status:
+                        elif inv_result.status in ("AI_PROVIDER_ERROR", "AI_INVALID_RESPONSE", "RATE_LIMIT_EXCEEDED") or "OPENROUTER" in inv_result.status:
                             machine.transition_to(RunState.INVESTIGATION_FAILED)
-                            update_run_state(RunState.INVESTIGATION_FAILED, error_code=inv_result.status, error_msg=inv_result.status)
+                            update_run_state(RunState.INVESTIGATION_FAILED, error_code=inv_result.status, error_msg=f"Provider error: {inv_result.status}")
                             return
                         else:
                             prior_failure_evidence.append({

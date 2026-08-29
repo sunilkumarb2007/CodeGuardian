@@ -166,22 +166,26 @@ class InvestigationService:
                 return InvestigationResult(incident_id=incident_id, status="OPENROUTER_EMPTY_RESPONSE")
         except RuntimeError as e:
             err_msg = str(e)
+            if "AI_OUTPUT_TRUNCATED" in err_msg or "SARVAM_OUTPUT_TRUNCATED" in err_msg or "TRUNCATED" in err_msg:
+                return InvestigationResult(incident_id=incident_id, status="AI_OUTPUT_TRUNCATED")
+            if "AI_TIMEOUT" in err_msg or "SARVAM_TIMEOUT" in err_msg or "timeout" in err_msg.lower():
+                return InvestigationResult(incident_id=incident_id, status="AI_TIMEOUT")
+            if "AI_SCHEMA_ERROR" in err_msg or "SARVAM_SCHEMA_ERROR" in err_msg or "schema" in err_msg.lower():
+                return InvestigationResult(incident_id=incident_id, status="AI_SCHEMA_ERROR")
             if "RATE_LIMIT" in err_msg or "QUOTA" in err_msg:
                 return InvestigationResult(incident_id=incident_id, status="RATE_LIMIT_EXCEEDED")
             if "INVESTIGATOR_NOT_CONFIGURED" in err_msg:
                 return self._create_stub_result(incident_id, attempt)
-            if "INVESTIGATION_SCHEMA_ERROR" in err_msg or "schema" in err_msg.lower():
-                return InvestigationResult(incident_id=incident_id, status="INVESTIGATION_SCHEMA_ERROR")
-            if "INVESTIGATION_TIMEOUT" in err_msg or "timeout" in err_msg.lower():
-                return InvestigationResult(incident_id=incident_id, status="timeout")
-            if "AUTH_FAILED" in err_msg or "401" in err_msg:
-                return InvestigationResult(incident_id=incident_id, status="OPENROUTER_AUTH_FAILED")
+            if "AUTH_FAILED" in err_msg or "401" in err_msg or "403" in err_msg:
+                return InvestigationResult(incident_id=incident_id, status="AI_PROVIDER_ERROR")
             if "PROVIDER_ERROR" in err_msg or "500" in err_msg or "502" in err_msg or "503" in err_msg:
-                return InvestigationResult(incident_id=incident_id, status="OPENROUTER_PROVIDER_ERROR")
+                return InvestigationResult(incident_id=incident_id, status="AI_PROVIDER_ERROR")
             if "CREDITS_EXHAUSTED" in err_msg or "402" in err_msg:
-                return InvestigationResult(incident_id=incident_id, status="OPENROUTER_CREDITS_EXHAUSTED")
+                return InvestigationResult(incident_id=incident_id, status="AI_PROVIDER_ERROR")
+            if "INVALID_RESPONSE" in err_msg or "EMPTY" in err_msg:
+                return InvestigationResult(incident_id=incident_id, status="AI_INVALID_RESPONSE")
             
-            logger.error(f"OpenRouter investigation failed: {e}")
+            logger.error(f"Investigation engine failed: {e}")
             return InvestigationResult(incident_id=incident_id, status=err_msg)
             
         result.incident_id = incident_id

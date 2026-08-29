@@ -147,12 +147,20 @@ export function resolveRunPresentation(run?: Run): ResolvedRunPresentation {
     engineeringAnalysis = 'Creating Git feature branch, committing patch, pushing to GitHub, and opening Pull Request.'
   } else if (status === 'investigation_failed') {
     currentAction = 'Investigation Failed'
-    engineeringAnalysis = run?.error || 'OpenRouter returned HTTP 402 or investigation boundaries exceeded.'
+    if (run?.error?.includes('TRUNCATED') || run?.error?.includes('incomplete')) {
+      engineeringAnalysis = 'AI output was incomplete. CodeGuardian could not safely generate a complete repair.'
+    } else {
+      engineeringAnalysis = run?.error || 'Investigation boundaries exceeded without viable patch candidate.'
+    }
     replayOutcome = 'BLOCKED'
     replaySummary = 'Investigation failed. Replay and Validation stages are blocked.'
   } else if (isFailed || isTerminal) {
     currentAction = status === 'rejected' ? 'Patch Rejected by Operator' : 'Investigation Halted'
-    engineeringAnalysis = run?.error || 'Investigation halted: provider or validation bounds exceeded without viable patch candidate.'
+    if (run?.error?.includes('TRUNCATED') || run?.error?.includes('incomplete')) {
+      engineeringAnalysis = 'AI output was incomplete. CodeGuardian could not safely generate a complete repair.'
+    } else {
+      engineeringAnalysis = run?.error || 'Investigation halted: provider or validation bounds exceeded without viable patch candidate.'
+    }
     replayOutcome = 'FAILED'
     replaySummary = run?.error || 'Stage validation or investigation failed.'
   }
