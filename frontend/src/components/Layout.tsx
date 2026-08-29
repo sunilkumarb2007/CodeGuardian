@@ -71,56 +71,72 @@ export function TopNav({ cta }: { cta?: ReactNode }) {
 
 export function Footer() {
   return (
-    <footer className="mt-32 border-t-2 border-ink-700 bg-lime text-ink-900">
+    <footer className="border-t border-ink-800 bg-ink-950 text-ink-400">
       <div className="mx-auto max-w-[1400px] px-6 py-16 sm:px-10">
-        <div className="flex flex-wrap items-center gap-6">
-          <LogoMark className="h-16 w-16 shrink-0 drop-shadow-none" />
-          <p className="display-lg max-w-4xl">Symptom is where you look. Root cause is where it broke.</p>
+        <div className="flex flex-wrap items-center justify-between gap-6 border-b border-ink-800 pb-10">
+          <div className="flex items-center gap-3">
+            <LogoMark className="h-8 w-8" />
+            <span className="font-display text-lg font-bold tracking-tight text-white">
+              Code<span className="text-lime">Guardian</span>
+            </span>
+          </div>
+          <p className="font-mono text-xs uppercase tracking-widest text-zinc-500">
+            Autonomous Failure Investigation &amp; Verified Repair
+          </p>
         </div>
-        <div className="mt-14 grid gap-10 border-t-2 border-ink-900/20 pt-10 md:grid-cols-4">
+        <div className="mt-10 grid gap-8 md:grid-cols-4">
           <div>
-            <p className="font-mono text-xs uppercase tracking-[0.28em] text-ink-900/60">Platform</p>
-            <ul className="mt-4 space-y-2 text-sm font-medium">
-              <li>GhostTrace reconstruction</li>
-              <li>Failure memory</li>
-              <li>Patch &amp; replay</li>
-              <li>Validation gates</li>
+            <p className="font-mono text-xs uppercase tracking-widest text-lime font-bold">Platform</p>
+            <ul className="mt-4 space-y-2 text-xs font-medium text-zinc-400">
+              <li>GhostTrace causal flow</li>
+              <li>Failure DNA &amp; fingerprinting</li>
+              <li>Counterfactual Repair Lab</li>
+              <li>Deterministic replay proof</li>
             </ul>
           </div>
           <div>
-            <p className="font-mono text-xs uppercase tracking-[0.28em] text-ink-900/60">Pipeline</p>
-            <ul className="mt-4 space-y-2 text-sm font-medium">
-              <li>Inspect → Triage</li>
-              <li>Evidence → GhostTrace</li>
-              <li>Investigate → Patch</li>
-              <li>Replay → Deliver</li>
+            <p className="font-mono text-xs uppercase tracking-widest text-lime font-bold">17-Stage Pipeline</p>
+            <ul className="mt-4 space-y-2 text-xs font-medium text-zinc-400">
+              <li>Inspect &amp; Detect (01–04)</li>
+              <li>Evidence &amp; Trace (05–08)</li>
+              <li>Patch &amp; Replay (09–11)</li>
+              <li>Build, Test &amp; Deliver (12–17)</li>
             </ul>
           </div>
           <div>
-            <p className="font-mono text-xs uppercase tracking-[0.28em] text-ink-900/60">Safety</p>
-            <ul className="mt-4 space-y-2 text-sm font-medium">
-              <li>Human approval gate</li>
-              <li>No unvalidated delivery</li>
-              <li>Backend-sourced state only</li>
-              <li>Explicit failure reporting</li>
+            <p className="font-mono text-xs uppercase tracking-widest text-lime font-bold">Safety &amp; Verification</p>
+            <ul className="mt-4 space-y-2 text-xs font-medium text-zinc-400">
+              <li>6/6 Deterministic safety gates</li>
+              <li>Sandboxed container execution</li>
+              <li>Human-in-the-loop approval gate</li>
+              <li>Zero unverified deliveries</li>
             </ul>
           </div>
           <div>
-            <p className="font-mono text-xs uppercase tracking-[0.28em] text-ink-900/60">Project</p>
-            <ul className="mt-4 space-y-2 text-sm font-medium">
+            <p className="font-mono text-xs uppercase tracking-widest text-lime font-bold">Ecosystem</p>
+            <ul className="mt-4 space-y-2 text-xs font-medium text-zinc-400">
               <li>
-                <a className="underline underline-offset-4" href="https://github.com/sunilkumarb2007/CodeGuardian">
-                  GitHub repository
+                <a
+                  className="hover:text-white transition-colors underline underline-offset-4"
+                  href="https://github.com/sunilkumarb2007/CodeGuardian"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  GitHub Repository →
                 </a>
               </li>
-              <li>FastAPI · PostgreSQL · SQLAlchemy</li>
+              <li>FastAPI · PostgreSQL · Sarvam AI</li>
+              <li>VS Code Extension (.vsix)</li>
             </ul>
           </div>
         </div>
-        <p className="mt-12 flex items-center gap-3 font-mono text-xs uppercase tracking-[0.22em] text-ink-900/60">
-          <LogoMark className="h-5 w-5 drop-shadow-none" />
-          CodeGuardian — autonomous engineering failure investigation
-        </p>
+        <div className="mt-12 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-ink-800/80 pt-6 text-xs text-zinc-500 font-mono">
+          <p>© 2026 CodeGuardian. Evidence-driven autonomous software repair.</p>
+          <p className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-lime animate-pulse" />
+            Engine: Sarvam 105B · PostgreSQL 17
+          </p>
+        </div>
       </div>
     </footer>
   )
