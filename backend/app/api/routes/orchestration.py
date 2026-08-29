@@ -1,4 +1,4 @@
-from datetime import timezone
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from typing import Optional
@@ -15,6 +15,7 @@ router = APIRouter()
 class OrchestrationRequest(BaseModel):
     repository_url: str
     supplied_incident_id: Optional[str] = None
+    failure_input: Optional[dict] = None
 
 class OrchestrationResponse(BaseModel):
     run_id: str
@@ -22,6 +23,37 @@ class OrchestrationResponse(BaseModel):
 
 @router.post("/run", response_model=OrchestrationResponse)
 def start_orchestration(req: OrchestrationRequest, background_tasks: BackgroundTasks):
+    validated_failure_input = None
+    if req.failure_input:
+        # Pre-validate structure
+        fi = dict(req.failure_input)
+        failure_type = fi.get("failure_type") or fi.get("error_code")
+        message = fi.get("message") or fi.get("error_pattern")
+        source = fi.get("source") or "RUNTIME"
+        timestamp = fi.get("timestamp") or datetime.now(timezone.utc).isoformat()
+
+        missing = []
+        if not failure_type:
+            missing.append("failure_type")
+        if not message:
+            missing.append("message")
+        if not source:
+            missing.append("source")
+        if not timestamp:
+            missing.append("timestamp")
+
+        if missing:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Failure evidence is incomplete. Missing required fields: {', '.join(missing)}"
+            )
+
+        fi["failure_type"] = failure_type
+        fi["message"] = message
+        fi["source"] = source
+        fi["timestamp"] = timestamp
+        validated_failure_input = fi
+
     orchestrator = CodeGuardianOrchestrator()
     run_id = orchestrator.initialize_run(req.repository_url)
     
@@ -29,7 +61,8 @@ def start_orchestration(req: OrchestrationRequest, background_tasks: BackgroundT
         orchestrator.execute_pipeline, 
         run_id, 
         req.repository_url, 
-        req.supplied_incident_id
+        req.supplied_incident_id,
+        validated_failure_input
     )
     
     return OrchestrationResponse(run_id=run_id, status="started")

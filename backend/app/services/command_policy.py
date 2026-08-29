@@ -14,7 +14,7 @@ class CommandPolicy:
     ALLOWED_GRADLE = ["gradle", "gradlew", "gradlew.bat", "gradle.bat"]
     ALLOWED_NPM = ["npm", "npx"]
     ALLOWED_PYTHON = ["python", "pip", "pytest"]
-    ALLOWED_GIT = ["git"]
+    ALLOWED_GIT = ["git", "patch"]
     
     # Safe Git commands
     ALLOWED_GIT_ARGS = [

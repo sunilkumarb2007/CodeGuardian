@@ -88,10 +88,10 @@ function safeParse(text: string): unknown {
   }
 }
 
-export function startRun(repositoryUrl: string): Promise<unknown> {
+export function startRun(repositoryUrl: string, failureInput?: Record<string, unknown>): Promise<unknown> {
   return request('/api/orchestration/run', {
     method: 'POST',
-    body: JSON.stringify({ repository_url: repositoryUrl }),
+    body: JSON.stringify({ repository_url: repositoryUrl, failure_input: failureInput }),
   })
 }
 
@@ -126,3 +126,14 @@ export function approveRun(runId: string): Promise<unknown> {
 export function rejectRun(runId: string): Promise<unknown> {
   return request(`/api/runs/${encodeURIComponent(runId)}/reject`, { method: 'POST' })
 }
+
+export function runFailureScenario(scenarioId: string): Promise<{ run_id: string }> {
+  return request(`/api/failure-lab/scenarios/${encodeURIComponent(scenarioId)}/run`, {
+    method: 'POST',
+  }) as Promise<{ run_id: string }>
+}
+
+export function listFailureScenarios(): Promise<unknown> {
+  return request('/api/failure-lab/scenarios')
+}
+

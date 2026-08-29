@@ -15,3 +15,7 @@ class FailureInput(BaseModel):
     timestamp: datetime
     repository_id: UUID
     run_id: str
+    source_file: Optional[str] = None
+    source_line: Optional[int] = None
+    service: Optional[str] = None
+    exception: Optional[str] = None

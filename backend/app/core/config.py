@@ -1,3 +1,8 @@
+import os
+from typing import Optional
+from dotenv import load_dotenv
+load_dotenv()
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
@@ -14,10 +19,23 @@ class Settings(BaseSettings):
     github_owner: str | None = None
 
     openrouter_api_key: str | None = None
-    openrouter_model: str = "meta-llama/llama-3-8b-instruct:free"
+    openrouter_model: str = "poolside/laguna-s-2.1:free"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     openrouter_site_url: str | None = None
     openrouter_site_name: str | None = None
+
+    # Generic & Direct Provider Configuration (Sarvam, DeepSeek, OpenRouter)
+    ai_provider: str = "sarvam"
+    ai_base_url: str = "https://api.sarvam.ai"
+    ai_model: str = "sarvam-105b"
+    
+    sarvam_api_key: str | None = None
+    sarvam_base_url: str = "https://api.sarvam.ai"
+    sarvam_model: str = "sarvam-105b"
+
+    deepseek_api_key: str | None = None
+    deepseek_base_url: str = "https://api.deepseek.com"
+    deepseek_model: str = "deepseek-chat"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

@@ -2,9 +2,11 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install system dependencies (for git, etc)
+# Install system dependencies (git, java, maven for replay execution)
 RUN apt-get update && apt-get install -y \
     git \
+    default-jdk-headless \
+    maven \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install

@@ -58,15 +58,26 @@ class FailureEvidenceCollector:
         inc_repo.save(incident)
         self.db.flush()
 
+        src_file = getattr(failure_input, 'source_file', None)
+        src_line = getattr(failure_input, 'source_line', None)
+        service_attr = getattr(failure_input, 'service', None)
+        
+        svc_name = service_attr or ("payment-service" if src_file and "PaymentService" in src_file else "generic-service")
+        
+        st_trace = failure_input.stack_trace
+        if not st_trace and src_file:
+            line_str = f":{src_line}" if src_line else ""
+            st_trace = f"at {src_file}{line_str}"
+
         events = []
         events.append(
             models.EvidenceEvent(
                 id=uuid.uuid4(), incident_id=incident.id,
-                service_name="generic-service", event_type="error",
+                service_name=svc_name, event_type="error",
                 timestamp=failure_input.timestamp or datetime.now(timezone.utc),
                 error_message=failure_input.message,
-                event_metadata={"exception": failure_input.failure_type, "command": failure_input.command, "exit_code": failure_input.exit_code},
-                stack_trace=failure_input.stack_trace,
+                event_metadata={"exception": failure_input.failure_type, "command": failure_input.command, "exit_code": failure_input.exit_code, "source_file": src_file, "source_line": src_line},
+                stack_trace=st_trace,
                 created_at=datetime.now(timezone.utc)
             )
         )

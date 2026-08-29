@@ -26,28 +26,45 @@ class RepositoryInspectionService:
             temp_dir = tempfile.mkdtemp(prefix="codeguardian_")
             
         try:
-            # If the directory is already populated, don't download again (Phase D reuse)
-            if not os.listdir(temp_dir):
-                self._clone_repo(repository_url, temp_dir)
+            def _on_rm_error(func, path, exc_info):
+                import stat
+                try:
+                    os.chmod(path, stat.S_IWRITE)
+                    func(path)
+                except Exception:
+                    pass
+
+            if os.path.exists(temp_dir) and os.listdir(temp_dir):
+                shutil.rmtree(temp_dir, onexc=_on_rm_error)
+                os.makedirs(temp_dir, exist_ok=True)
+            self._clone_repo(repository_url, temp_dir)
+            commit_sha = self._get_commit_sha(temp_dir)
             
             # 2. Analyze Architecture
             architecture = self._analyze_architecture(temp_dir)
             
             # 2.5 Ingest source files if DB provided
             if db and repository_id:
-                from app.db.models import RepositoryFile
+                from app.db.models import RepositoryFile, Repository
                 import uuid
-                from typing import Optional
                 from datetime import datetime, timezone
-                # Clean old files to avoid duplicate clutter
+                # Clean old files to avoid stale context in AI prompts
                 db.query(RepositoryFile).filter(RepositoryFile.repository_id == repository_id).delete()
                 
-                # Ignored directories
-                ignored_dirs = {'.git', 'node_modules', 'venv', '.venv', '__pycache__', 'dist', 'build', '.idea', '.vscode'}
+                # Store commit SHA on the Repository record for traceability
+                try:
+                    repo_rec = db.query(Repository).filter(Repository.id == repository_id).first()
+                    if repo_rec and hasattr(repo_rec, 'commit_sha'):
+                        repo_rec.commit_sha = commit_sha
+                except Exception:
+                    pass  # commit_sha column may not exist yet
                 
-                # Walk temp_dir and ingest
+                # Ignored directories — never ingest build artifacts or tooling
+                ignored_dirs = {'.git', 'node_modules', 'venv', '.venv', '__pycache__', 'dist', 'build', '.idea', '.vscode', 'target', '.mvn'}
+                
+                # Walk temp_dir and ingest, classifying each file's role
                 files_ingested = 0
-                logger.error(f"DEBUG: Walking {temp_dir}")
+                logger.info(f"Ingesting repository files from {temp_dir} (commit={commit_sha})")
                 for root, dirs, files in os.walk(temp_dir):
                     dirs[:] = [d for d in dirs if d not in ignored_dirs]
                     
@@ -58,21 +75,23 @@ class RepositoryInspectionService:
                             try:
                                 with open(file_path, "r", encoding="utf-8") as f:
                                     content = f.read()
+                                file_role = self._classify_file_role(rel_path)
                                 db.add(RepositoryFile(
                                     id=uuid.uuid4(),
                                     repository_id=repository_id,
                                     file_path=rel_path,
                                     source_snapshot=content,
+                                    file_role=file_role,
                                     created_at=datetime.now(timezone.utc),
                                     updated_at=datetime.now(timezone.utc)
                                 ))
                                 files_ingested += 1
                             except Exception as e:
                                 logger.warning(f"Failed to ingest file {rel_path}: {e}")
-                logger.error(f"DEBUG: Ingested {files_ingested} files")
+                logger.info(f"Ingested {files_ingested} files (commit={commit_sha})")
                 db.commit()
                 check_files = db.query(RepositoryFile).filter(RepositoryFile.repository_id == repository_id).all()
-                logger.error(f"DEBUG: Check files directly after flush: {len(check_files)}")
+                logger.info(f"Verified {len(check_files)} files in DB after ingestion")
             
             # 3. Detect build/test failures
             build_passed, test_passed, failure_output, details = self._run_static_checks(temp_dir, architecture)
@@ -100,6 +119,40 @@ class RepositoryInspectionService:
             error_msg = res.get("stderr", "Unknown Git Error")
             logger.error(f"Clone failed: {error_msg}")
             raise RuntimeError(f"Failed to clone repository: {error_msg}")
+
+    def _get_commit_sha(self, repo_dir: str) -> str:
+        """Returns the HEAD commit SHA of the cloned repository."""
+        try:
+            cmd_svc = CommandExecutionService()
+            res = cmd_svc.execute_command(["git", "rev-parse", "HEAD"], cwd=repo_dir, timeout_seconds=10, architecture="git")
+            if res.get("exit_code") == 0:
+                sha = res.get("stdout", "").strip()
+                logger.info(f"Repository HEAD commit SHA: {sha}")
+                return sha
+        except Exception as e:
+            logger.warning(f"Could not determine commit SHA: {e}")
+        return "unknown"
+
+    def _classify_file_role(self, rel_path: str) -> str:
+        """
+        Classifies a repository file into one of:
+          SOURCE       - production source code (authoritative for patches)
+          TEST         - test source code (authoritative for patch validation)
+          CONFIGURATION- build/config files
+          DOCUMENTATION- README and other docs (NON-AUTHORITATIVE, may be stale)
+        """
+        lp = rel_path.lower()
+        # Test files first (more specific than source)
+        if '/test/' in lp or '/tests/' in lp or lp.endswith('test.java') or lp.endswith('tests.java') or lp.endswith('_test.py') or lp.endswith('test_.py'):
+            return 'TEST'
+        # Documentation — never trust for patch generation
+        if lp.endswith('.md') or lp.endswith('.rst') or lp.endswith('.txt') and 'requirements' not in lp:
+            return 'DOCUMENTATION'
+        # Build/config
+        if lp.endswith('pom.xml') or lp.endswith('.gradle') or lp.endswith('.kts') or lp.endswith('.yml') or lp.endswith('.yaml') or lp.endswith('.json') or lp.endswith('.properties') or lp.endswith('.xml'):
+            return 'CONFIGURATION'
+        # Default: source
+        return 'SOURCE'
 
     def _analyze_architecture(self, repo_dir: str) -> ArchitectureSummary:
         tech_stack = []

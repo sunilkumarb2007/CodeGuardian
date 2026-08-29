@@ -8,7 +8,24 @@ const MAX_POLLS = 600
 
 function isTerminal(run: Run | undefined): boolean {
   if (!run) return false
-  return run.status === 'completed' || run.status === 'failed' || run.status === 'rejected'
+  const terminalStates = [
+    'completed',
+    'failed',
+    'rejected',
+    'baseline_failure_not_reproduced',
+    'investigation_failed',
+    'investigation_timeout',
+    'patch_apply_failed',
+    'replay_failed',
+    'validation_failed',
+    'delivery_failed',
+    'delivery_cancelled',
+    'cancelled',
+    'blocked',
+    'repair_exhausted',
+    'repository_not_found',
+  ]
+  return terminalStates.includes(run.status || '')
 }
 
 function isPaused(run: Run | undefined): boolean {
@@ -51,7 +68,16 @@ export function useRun(runId: string | undefined): UseRunResult {
   // Polling stops as soon as the run reaches a terminal state or the approval
   // gate, so an idle workspace never keeps hitting the backend.
   useEffect(() => {
-    if (!runId) return
+    if (!runId) {
+      setRun(undefined)
+      setLoading(false)
+      return
+    }
+    
+    // Clear stale run state when switching IDs
+    setRun(undefined)
+    setLoading(true)
+    
     let cancelled = false
     let timer: number | undefined
     pollCount.current = 0

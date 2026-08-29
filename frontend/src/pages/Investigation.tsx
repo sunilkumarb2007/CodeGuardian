@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useState, useEffect, useMemo } from 'react'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useRun } from '../hooks/useRun'
 import { CursorFX } from '../components/CursorFX'
 import { Card } from '../components/primitives'
@@ -10,19 +10,21 @@ import { IDESidebar, type WorkspaceSection } from '../components/workspace/IDESi
 import { IDEStatusBar } from '../components/workspace/IDEStatusBar'
 import { TraceOverviewPanel } from '../components/workspace/TraceOverviewPanel'
 import { AutoFixAgentPanel } from '../components/workspace/AutoFixAgentPanel'
+import { IDESourceWorkspace } from '../components/workspace/IDESourceWorkspace'
 
 import {
   EvidencePanel,
   GhostTracePanel,
-  SourcePanel,
   StackTracePanel,
+  FailureDetectionPanel,
 } from '../components/panels/failure'
-import { RepositoryPanel, RunStatusPanel } from '../components/panels/discovery'
+import { RepositoryPanel, RunStatusPanel, InspectionPanel, ArchitecturePanel } from '../components/panels/discovery'
 import {
   ApprovalPanel,
   ChangedFilesPanel,
   CommandLogPanel,
-  CommandResultPanel,
+  BuildPanel,
+  TestsPanel,
   CompatibilityPanel,
   DeliveryPanel,
   InvestigationPanel,
@@ -31,261 +33,412 @@ import {
   PatchPanel,
   ReplayPanel,
   ValidationPanel,
+  EventHistoryPanel,
 } from '../components/panels/repair'
+import { FailureDNAPanel } from '../components/panels/FailureDNAPanel'
+import { RepairLabPanel } from '../components/panels/RepairLabPanel'
+import { BlastRadiusPanel } from '../components/panels/BlastRadiusPanel'
+import { ImmunizationPanel } from '../components/panels/ImmunizationPanel'
+import { FailureLabPanel } from '../components/panels/FailureLabPanel'
+import { CapsulePanel } from '../components/panels/CapsulePanel'
 
-type TabType = 'Trace Overview' | 'Stack Trace' | 'Logs (24)' | 'Request' | 'Response' | 'Metadata'
+type TabType = 'Trace Overview' | 'Stack Trace' | 'Events' | 'Request' | 'Response' | 'Metadata'
 
 const TABS: TabType[] = [
   'Trace Overview',
   'Stack Trace',
-  'Logs (24)',
+  'Events',
   'Request',
   'Response',
   'Metadata',
 ]
 
 export default function Investigation() {
-  const params = useParams<{ runId: string }>()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const params = useParams<{ runId: string; '*': string }>()
   const runId = params.runId ?? ''
-  const { run, error, loading, deciding, approve, reject, decideFile, refresh } = useRun(runId)
+  const { run, error, loading, deciding, approve, reject, decideFile } = useRun(runId)
 
   const [activeSection, setActiveSection] = useState<WorkspaceSection>('Overview')
   const [activeTab, setActiveTab] = useState<TabType>('Trace Overview')
+  const [isSourceFullScreen, setIsSourceFullScreen] = useState(false)
 
-  const displayRunId = runId ? `INV-${runId.slice(0, 4).toUpperCase()}` : 'INV-1042'
-  const incidentTitle = run?.incident?.title || run?.incident?.errorType || 'Payment processing\nNullPointerException'
-  const incidentDescription =
-    run?.incident?.summary ||
-    'paymentRecord is dereferenced without checking whether the repository lookup returned null.'
-  const httpStatus = run?.incident?.httpStatus ?? 500
-  const endpoint = run?.incident?.endpoint ?? 'POST /payments/charge'
-  const serviceName = run?.incident?.service ?? run?.repository?.name ?? 'payment-service'
-  const requestId = run?.incident?.requestId ?? 'req-demo-1'
-  const firstSeen = run?.incident?.firstSeen ?? '2026-08-26 13:34:20 +05:30'
-  const environment = run?.incident?.environment ?? 'development'
-  const fingerprint = run?.incident?.fingerprint ?? 'NULL_OBJECT_ACCESS'
-  const attempts = run?.incident?.attempts !== undefined ? `${run.incident.attempts} / 3` : '0 / 3'
+  const isHealthyRun =
+    run?.status === 'baseline_failure_not_reproduced' ||
+    run?.status === 'no_failure_found' ||
+    run?.status === 'no_failure_evidence'
+
+  const displayRunId = runId ? `INV-${runId.slice(0, 4).toUpperCase()}` : 'INV-710B'
+  const incidentTitle = isHealthyRun ? 'ANALYSIS COMPLETE' : (run?.incident?.title || run?.incident?.errorType || 'NO INCIDENT TITLE')
+  const incidentDescription = isHealthyRun ? 'No reproducible failure found against repository baseline.' : (run?.incident?.summary || 'No incident summary available.')
+  const httpStatus = isHealthyRun ? '200 OK' : (run?.incident?.httpStatus ?? 'N/A')
+  const endpoint = isHealthyRun ? '/api/health' : (run?.incident?.endpoint ?? 'N/A')
+  const serviceName = run?.incident?.service ?? run?.repository?.name ?? 'UNKNOWN'
+  const requestId = run?.incident?.requestId ?? 'N/A'
+  const firstSeen = run?.incident?.firstSeen ?? 'RECORDED'
+  const environment = run?.incident?.environment ?? 'UNKNOWN'
+  const fingerprint = isHealthyRun ? 'HEALTHY_BASELINE' : (run?.incident?.fingerprint ?? 'PENDING')
+  const attempts = isHealthyRun ? '3 / 3 (Passed)' : (run?.incident?.attempts !== undefined ? `${run.incident.attempts} / 3` : '0 / 3')
+
+  // Extract path subsegment after /runs/:runId/
+  const subpath = useMemo(() => {
+    const prefix = `/runs/${runId}`
+    if (location.pathname.startsWith(prefix)) {
+      const rest = location.pathname.slice(prefix.length).replace(/^\/+/, '').toLowerCase()
+      return rest.replace(/^stages\//, '')
+    }
+    return ''
+  }, [location.pathname, runId])
+
+  // Sync URL subpath with activeSection
+  useEffect(() => {
+    if (!subpath || subpath === 'overview') {
+      setActiveSection('Overview')
+    } else if (subpath === 'failure-dna' || subpath === 'failuredna') {
+      setActiveSection('Failure DNA')
+    } else if (subpath === 'repair-lab' || subpath === 'repairlab') {
+      setActiveSection('Repair Lab')
+    } else if (subpath === 'blast-radius' || subpath === 'blastradius') {
+      setActiveSection('Blast Radius')
+    } else if (subpath === 'immunization') {
+      setActiveSection('Immunization')
+    } else if (subpath === 'failure-lab' || subpath === 'failurelab') {
+      setActiveSection('Failure Lab')
+    } else if (subpath === 'capsule') {
+      setActiveSection('Capsule')
+    } else if (subpath === 'repository' || subpath === '01_repository') {
+      setActiveSection('Repository')
+    } else if (subpath === 'inspection' || subpath === '02_inspection') {
+      setActiveSection('Inspection')
+    } else if (subpath === 'architecture' || subpath === '03_architecture') {
+      setActiveSection('Architecture')
+    } else if (subpath === 'failure-detection' || subpath === '04_failure_detection' || subpath === 'failure') {
+      setActiveSection('Failure Detection')
+    } else if (subpath === 'evidence' || subpath === '05_evidence') {
+      setActiveSection('Evidence')
+    } else if (subpath === 'ghosttrace' || subpath === 'ghost-trace' || subpath === '06_ghost_trace') {
+      setActiveSection('GhostTrace')
+    } else if (subpath === 'memory' || subpath === '07_failure_memory' || subpath === 'failure-memory') {
+      setActiveSection('Memory')
+    } else if (subpath === 'investigation' || subpath === '08_investigation') {
+      setActiveSection('Investigation')
+    } else if (subpath === 'source') {
+      setActiveSection('Source')
+    } else if (subpath === 'patch' || subpath === '09_patch') {
+      setActiveSection('Patch')
+    } else if (subpath === 'compatibility' || subpath === '10_compatibility') {
+      setActiveSection('Compatibility')
+    } else if (subpath === 'replay' || subpath === '11_replay') {
+      setActiveSection('Replay')
+    } else if (subpath === 'build' || subpath === '12_build') {
+      setActiveSection('Build')
+    } else if (subpath === 'tests' || subpath === '13_tests') {
+      setActiveSection('Tests')
+    } else if (subpath === 'validation' || subpath === '14_validation') {
+      setActiveSection('Validation')
+    } else if (subpath === 'human-approval' || subpath === '15_human_approval' || subpath === 'approval') {
+      setActiveSection('Human Approval')
+    } else if (subpath === 'delivery' || subpath === '16_delivery') {
+      setActiveSection('Delivery')
+    } else if (subpath === 'memory-update' || subpath === '17_memory_update') {
+      setActiveSection('Memory Update')
+    } else {
+      setActiveSection('Overview')
+    }
+  }, [subpath])
+
+  const handleNavigateSection = (section: string) => {
+    const slug = section.toLowerCase().replace(/\s+/g, '-')
+    navigate(`/runs/${runId}/${slug}`)
+  }
 
   const handleSelectStage = (stageKey: string) => {
-    // Map stage key to corresponding workspace section or keep Overview
-    if (stageKey.includes('repository')) setActiveSection('Repository')
-    else if (stageKey.includes('evidence')) setActiveSection('Evidence')
-    else if (stageKey.includes('ghost_trace')) setActiveSection('GhostTrace')
-    else if (stageKey.includes('memory')) setActiveSection('Memory')
-    else if (stageKey.includes('investigation')) setActiveSection('Investigation')
-    else if (stageKey.includes('patch')) setActiveSection('Patch')
-    else if (stageKey.includes('replay')) setActiveSection('Replay')
-    else if (stageKey.includes('validation')) setActiveSection('Validation')
-    else if (stageKey.includes('delivery')) setActiveSection('Delivery')
-    else setActiveSection('Overview')
+    const base = stageKey.replace(/^\d+_/, '')
+    if (base === 'repository') handleNavigateSection('repository')
+    else if (base === 'inspection') handleNavigateSection('inspection')
+    else if (base === 'architecture') handleNavigateSection('architecture')
+    else if (base === 'failure_detection' || base === 'failure') handleNavigateSection('failure-detection')
+    else if (base === 'evidence') handleNavigateSection('evidence')
+    else if (base === 'ghost_trace' || base === 'ghosttrace') handleNavigateSection('ghosttrace')
+    else if (base === 'failure_memory') handleNavigateSection('memory')
+    else if (base === 'investigation') handleNavigateSection('investigation')
+    else if (base === 'patch') handleNavigateSection('patch')
+    else if (base === 'compatibility') handleNavigateSection('compatibility')
+    else if (base === 'replay') handleNavigateSection('replay')
+    else if (base === 'build') handleNavigateSection('build')
+    else if (base === 'tests') handleNavigateSection('tests')
+    else if (base === 'validation') handleNavigateSection('validation')
+    else if (base === 'human_approval') handleNavigateSection('human-approval')
+    else if (base === 'delivery') handleNavigateSection('delivery')
+    else if (base === 'memory_update') handleNavigateSection('memory-update')
+    else handleNavigateSection('overview')
   }
 
   return (
-    <div className="flex h-screen flex-col bg-[#070A0B] text-white font-sans overflow-hidden select-none">
+    <div className="flex h-screen flex-col bg-ide-base text-white font-sans overflow-hidden select-none">
       <CursorFX />
 
       {/* 1. Global Top IDE Header */}
-      <IDEHeader run={run} runId={runId} />
+      <IDEHeader
+        run={run}
+        runId={runId}
+        isFullScreen={isSourceFullScreen}
+        onToggleFullScreen={() => setIsSourceFullScreen(!isSourceFullScreen)}
+      />
 
       {/* Error Banner if API failed */}
       {error ? (
-        <div className="p-4 bg-red-950/40 border-b border-red-500/40 flex items-center justify-between text-xs font-mono text-red-300">
-          <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-red-500 animate-ping" />
-            <span>BACKEND DISCONNECTED: {error}</span>
-          </div>
+        <div className="bg-red-500/10 border-b border-red-500/20 px-4 py-2 text-xs text-red-400 font-mono flex items-center justify-between">
+          <span>Failed to connect to CodeGuardian backend: {error}</span>
           <button
             type="button"
-            onClick={() => void refresh()}
-            className="px-3 py-1 bg-red-900/60 hover:bg-red-900 border border-red-500/50 rounded text-white"
+            onClick={() => window.location.reload()}
+            className="text-white underline hover:no-underline font-semibold"
           >
-            Retry Connection
+            Retry
           </button>
         </div>
       ) : null}
 
-      {/* Loading state before initial payload */}
+      {/* 2. Main 3-Column IDE Workspace Grid */}
       {loading && !run ? (
-        <div className="flex-1 flex items-center justify-center">
-          <Card className="p-8 text-center border border-white/[0.08] bg-[#0F1518]">
-            <BrandLoader label="Connecting to CodeGuardian workspace..." />
-          </Card>
+        <div className="flex-1 flex items-center justify-center bg-ide-base">
+          <BrandLoader label="Connecting to sandboxed investigation environment..." />
         </div>
       ) : (
-        /* 2. Main 3-Column IDE Workspace Body */
-        <div className="flex-1 flex min-h-0 overflow-hidden">
-          {/* Column A: Left Sidebar (~195px) */}
+        <div className="flex flex-1 min-h-0 relative overflow-hidden">
+          {/* Column A: Persistent Left Sidebar (Workspace & 17 Stages) */}
           <IDESidebar
             activeSection={activeSection}
-            onSelectSection={(s) => {
-              setActiveSection(s)
-              if (s === 'Overview') setActiveTab('Trace Overview')
-            }}
+            onSelectSection={(s) => handleNavigateSection(s)}
             run={run}
             onSelectStage={handleSelectStage}
           />
 
-          {/* Column B: Center Investigation Area (Scrollable Main Workspace) */}
-          <main className="flex-1 flex flex-col min-w-0 bg-[#0B1012] overflow-y-auto">
-            <div className="p-6 max-w-[1400px] mx-auto w-full space-y-6">
-              {/* Breadcrumb */}
-              <div className="flex items-center gap-2 text-xs font-mono text-zinc-500">
-                <span className="hover:text-zinc-300 cursor-pointer">Investigations</span>
+          {/* Column B: Primary IDE Workspace Area */}
+          <main
+            tabIndex={0}
+            role="main"
+            aria-label="Investigation workspace main content"
+            className="flex-1 flex flex-col min-w-0 bg-ide-base overflow-y-auto focus:outline-none"
+          >
+            {/* Context Breadcrumbs */}
+            <div className="px-6 py-2.5 border-b border-ide-divider flex items-center justify-between text-xs font-mono text-zinc-400 bg-ide-panel/40 shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="text-zinc-500">runs</span>
                 <span>/</span>
-                <span className="text-zinc-400">{displayRunId}</span>
+                <span className="text-lime font-semibold">{displayRunId}</span>
                 <span>/</span>
-                <span className="text-lime font-semibold">
-                  {activeSection === 'Overview' ? 'Failure Detection' : activeSection}
+                <span className="text-white font-bold">{activeSection}</span>
+              </div>
+              <div className="flex items-center gap-4 text-[11px]">
+                <span className="text-zinc-500">
+                  Target:{' '}
+                  <span className="text-zinc-300 font-semibold">{run?.repository?.name || serviceName}</span>
+                </span>
+                <span className="text-zinc-500">
+                  Status:{' '}
+                  <span className={`font-semibold ${isHealthyRun ? 'text-lime' : run?.status === 'completed' ? 'text-lime' : 'text-amber-400'}`}>
+                    {isHealthyRun ? 'HEALTHY (NO DEFECT)' : (run?.status || 'RUNNING').toUpperCase()}
+                  </span>
                 </span>
               </div>
+            </div>
 
-              {/* Incident Header */}
-              <div className="rounded-xl border border-white/[0.08] bg-[#0F1518] p-5">
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                  {/* Left Title & Chips */}
-                  <div className="lg:col-span-8 space-y-3">
-                    <h1 className="font-display text-2xl lg:text-3xl font-black text-white tracking-tight leading-tight whitespace-pre-line">
+            {/* Content Display Area */}
+            <div className="p-6 space-y-6 max-w-7xl w-full mx-auto">
+              {/* Executive Incident Header (Only on Overview) */}
+              {activeSection === 'Overview' ? (
+                <div className="rounded-xl border border-ide-divider bg-ide-panel p-5 space-y-4">
+                  {/* Top Chips Row */}
+                  <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
+                    <span className="px-2 py-0.5 rounded bg-lime/10 border border-lime/30 text-lime font-semibold">
+                      {serviceName}
+                    </span>
+                    <span className="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-zinc-300">
+                      {endpoint}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded border font-semibold ${
+                      isHealthyRun ? 'bg-lime/10 border-lime/30 text-lime' : 'bg-red-500/10 border-red-500/30 text-red-400'
+                    }`}>
+                      HTTP {httpStatus}
+                    </span>
+                    <span className="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-zinc-300">
+                      {environment}
+                    </span>
+                  </div>
+
+                  {/* Title & Description */}
+                  <div className="space-y-1">
+                    <h2 className="font-display text-2xl font-bold text-white tracking-tight">
                       {incidentTitle}
-                    </h1>
-
-                    {/* Metadata Chips */}
-                    <div className="flex flex-wrap items-center gap-2 pt-1">
-                      <span className="px-2.5 py-0.5 rounded font-mono text-xs font-bold bg-red-500/15 border border-red-500/30 text-red-400">
-                        HTTP {httpStatus}
-                      </span>
-                      <span className="px-2.5 py-0.5 rounded font-mono text-xs bg-[#070A0B] border border-white/[0.08] text-zinc-300">
-                        {endpoint}
-                      </span>
-                      <span className="px-2.5 py-0.5 rounded font-mono text-xs bg-blue-500/10 border border-blue-500/30 text-blue-300 flex items-center gap-1.5">
-                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                        </svg>
-                        {serviceName}
-                      </span>
-                      <span className="px-2.5 py-0.5 rounded font-mono text-xs bg-[#070A0B] border border-white/[0.08] text-zinc-400">
-                        {requestId}
-                      </span>
-                    </div>
-
-                    {/* Summary Description */}
-                    <p className="text-sm text-zinc-300 font-sans leading-relaxed pt-1">
+                    </h2>
+                    <p className="text-xs text-zinc-400 leading-relaxed max-w-4xl">
                       {incidentDescription}
                     </p>
                   </div>
 
-                  {/* Right Metadata 2-Column Grid */}
-                  <div className="lg:col-span-4 border-t lg:border-t-0 lg:border-l border-white/[0.08] lg:pl-6 grid grid-cols-2 gap-y-2 text-xs font-mono">
+                  {/* Incident Quick Metrics Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-3 border-t border-ide-divider text-xs font-mono">
                     <div>
-                      <span className="text-zinc-500 block text-[10px] uppercase">First seen</span>
-                      <span className="text-zinc-200 text-[11px]">{firstSeen}</span>
+                      <span className="text-zinc-500 block text-[10px]">FIRST RECORDED</span>
+                      <span className="text-zinc-300 font-semibold">{firstSeen}</span>
                     </div>
                     <div>
-                      <span className="text-zinc-500 block text-[10px] uppercase">Environment</span>
-                      <span className="text-zinc-200">{environment}</span>
+                      <span className="text-zinc-500 block text-[10px]">REPRODUCIBILITY</span>
+                      <span className="text-zinc-300 font-semibold">{attempts}</span>
                     </div>
                     <div>
-                      <span className="text-zinc-500 block text-[10px] uppercase">Error fingerprint</span>
-                      <span className="text-zinc-300 text-[11px]">{fingerprint}</span>
+                      <span className="text-zinc-500 block text-[10px]">ROOT CAUSE SERVICE</span>
+                      <span className="text-zinc-300 font-semibold">{serviceName}</span>
                     </div>
                     <div>
-                      <span className="text-zinc-500 block text-[10px] uppercase">Attempts</span>
-                      <span className="text-zinc-300">{attempts}</span>
-                    </div>
-                    <div>
-                      <span className="text-zinc-500 block text-[10px] uppercase">Severity</span>
-                      <span className="text-amber-400 font-semibold flex items-center gap-1">
-                        <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-                        Medium
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-zinc-500 block text-[10px] uppercase">Duration</span>
-                      <span className="text-zinc-200">17ms</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Tab Navigation */}
-              <div className="flex items-center gap-6 border-b border-white/[0.08] text-xs font-mono">
-                {TABS.map((tab) => {
-                  const isActive = activeTab === tab
-                  return (
-                    <button
-                      key={tab}
-                      type="button"
-                      onClick={() => setActiveTab(tab)}
-                      className={`pb-2.5 transition-colors relative font-semibold ${
-                        isActive
-                          ? 'text-lime'
-                          : 'text-zinc-400 hover:text-zinc-200'
-                      }`}
-                    >
-                      <span>{tab}</span>
-                      {isActive ? (
-                        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-lime rounded-full" />
-                      ) : null}
-                    </button>
-                  )
-                })}
-              </div>
-
-              {/* Main Tab Content */}
-              {activeTab === 'Trace Overview' && activeSection === 'Overview' ? (
-                <TraceOverviewPanel trace={run?.ghostTrace} incident={run?.incident} />
-              ) : activeTab === 'Stack Trace' || activeSection === 'Source' ? (
-                <div className="space-y-6">
-                  <StackTracePanel stackTrace={run?.stackTrace} />
-                  <SourcePanel files={run?.sourceFiles ?? []} investigation={run?.investigation} />
-                </div>
-              ) : activeTab === 'Logs (24)' ? (
-                <div className="space-y-6">
-                  <CommandLogPanel commands={run?.commands ?? []} />
-                </div>
-              ) : activeTab === 'Request' ? (
-                <div className="rounded-xl border border-white/[0.08] bg-[#0F1518] p-5 font-mono text-xs space-y-4">
-                  <h3 className="font-bold text-white uppercase text-sm">HTTP Request</h3>
-                  <pre className="p-3 bg-[#070A0B] rounded-lg text-zinc-300 border border-white/[0.08] overflow-x-auto">
-                    {`POST /payments/charge HTTP/1.1\nHost: api.codeguardian.local\nContent-Type: application/json\nX-Request-Id: ${requestId}\n\n{\n  "amount": 2500,\n  "currency": "USD",\n  "customer_id": "cust_90124",\n  "payment_method": "pm_card_visa"\n}`}
-                  </pre>
-                </div>
-              ) : activeTab === 'Response' ? (
-                <div className="rounded-xl border border-white/[0.08] bg-[#0F1518] p-5 font-mono text-xs space-y-4">
-                  <h3 className="font-bold text-red-400 uppercase text-sm">HTTP Response (500 Internal Server Error)</h3>
-                  <pre className="p-3 bg-[#070A0B] rounded-lg text-red-400 border border-red-500/20 overflow-x-auto">
-                    {`HTTP/1.1 500 Internal Server Error\nContent-Type: application/json\nX-Request-Id: ${requestId}\n\n{\n  "error": "InternalServerError",\n  "message": "NullPointerException: Cannot read properties of null at PaymentService.charge(PaymentService.java:82)",\n  "status": 500\n}`}
-                  </pre>
-                </div>
-              ) : activeTab === 'Metadata' ? (
-                <div className="rounded-xl border border-white/[0.08] bg-[#0F1518] p-5 font-mono text-xs space-y-4">
-                  <h3 className="font-bold text-white uppercase text-sm">Incident Metadata</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <span className="text-zinc-500 block text-[10px]">APPLICATION</span>
-                      <span className="text-zinc-200">{serviceName}</span>
-                    </div>
-                    <div>
-                      <span className="text-zinc-500 block text-[10px]">HOST</span>
-                      <span className="text-zinc-200">macos-worker-01</span>
-                    </div>
-                    <div>
-                      <span className="text-zinc-500 block text-[10px]">TRACE ID</span>
-                      <span className="text-zinc-300">4b4d05950bc9045a470d62</span>
-                    </div>
-                    <div>
-                      <span className="text-zinc-500 block text-[10px]">RUNTIME</span>
-                      <span className="text-zinc-200">OpenJDK 17.0.9</span>
+                      <span className="text-zinc-500 block text-[10px]">ERROR FINGERPRINT</span>
+                      <span className="text-lime font-semibold">{fingerprint}</span>
                     </div>
                   </div>
                 </div>
               ) : null}
 
-              {/* Workspace Sections Content if navigated via Left Nav */}
-              {activeSection === 'Repository' ? (
+              {/* Tab Navigation (Only in Overview) */}
+              {activeSection === 'Overview' ? (
+                <div className="border-b border-ide-divider flex items-center gap-1 overflow-x-auto">
+                  {TABS.map((tab) => {
+                    const isActive = activeTab === tab
+                    return (
+                      <button
+                        key={tab}
+                        type="button"
+                        onClick={() => setActiveTab(tab)}
+                        className={`px-4 py-2 text-xs font-mono font-medium rounded-t-lg transition-colors border-b-2 whitespace-nowrap ${
+                          isActive
+                            ? 'border-lime text-lime bg-ide-panel/80 font-bold'
+                            : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-ide-panel/40'
+                        }`}
+                      >
+                        {tab}
+                        {tab === 'Events' && run?.events ? ` (${run.events.length})` : ''}
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : null}
+
+              {/* Tab Content Display (Only in Overview) */}
+              {activeSection === 'Overview' && activeTab === 'Trace Overview' ? (
+                <TraceOverviewPanel trace={run?.ghostTrace} incident={run?.incident} />
+              ) : null}
+
+              {activeSection === 'Overview' && activeTab === 'Stack Trace' ? (
+                <StackTracePanel stackTrace={run?.stackTrace} />
+              ) : null}
+
+              {activeSection === 'Overview' && activeTab === 'Events' ? (
+                <EventHistoryPanel events={run?.events ?? []} commands={run?.commands ?? []} />
+              ) : null}
+
+              {activeSection === 'Overview' && activeTab === 'Request' ? (
+                <Card>
+                  <div className="p-6">
+                    <p className="eyebrow mb-2">Request Payload</p>
+                    <pre className="code font-mono text-xs text-zinc-300 bg-ide-base p-4 rounded-xl border border-ide-divider overflow-x-auto">
+                      {run?.incident?.requestPayload
+                        ? JSON.stringify(run.incident.requestPayload, null, 2)
+                        : JSON.stringify(
+                            {
+                              method: 'POST',
+                              endpoint: endpoint,
+                              headers: { 'Content-Type': 'application/json' },
+                              body: run?.incident?.payload ?? {
+                                transaction_id: 'tx_live_9941a',
+                                amount: 25000,
+                                currency: 'USD',
+                                merchant: null,
+                              },
+                            },
+                            null,
+                            2,
+                          )}
+                    </pre>
+                  </div>
+                </Card>
+              ) : null}
+
+              {activeSection === 'Overview' && activeTab === 'Response' ? (
+                <Card>
+                  <div className="p-6">
+                    <p className="eyebrow mb-2">Response Payload</p>
+                    <pre className="code font-mono text-xs text-zinc-300 bg-ide-base p-4 rounded-xl border border-ide-divider overflow-x-auto">
+                      {run?.incident?.responsePayload
+                        ? JSON.stringify(run.incident.responsePayload, null, 2)
+                        : JSON.stringify(
+                            {
+                              status: isHealthyRun ? 200 : (run?.incident?.httpStatus ?? 500),
+                              error: isHealthyRun ? null : (run?.incident?.errorType ?? 'Internal Server Error'),
+                              message: incidentDescription,
+                              timestamp: new Date().toISOString(),
+                            },
+                            null,
+                            2,
+                          )}
+                    </pre>
+                  </div>
+                </Card>
+              ) : null}
+
+              {activeSection === 'Overview' && activeTab === 'Metadata' ? (
+                <div className="rounded-xl border border-ide-divider bg-ide-panel p-6 space-y-4 font-mono text-xs">
+                  <p className="eyebrow">Incident Diagnostic Metadata</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <span className="text-zinc-500 block text-[10px]">ENVIRONMENT</span>
+                      <span className="text-zinc-300">{environment}</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 block text-[10px]">RECORDED AT</span>
+                      <span className="text-zinc-300">{firstSeen}</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 block text-[10px]">TRACE ID</span>
+                      <span className="text-zinc-300">{requestId}</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 block text-[10px]">FINGERPRINT</span>
+                      <span className="text-zinc-200">{fingerprint}</span>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Workspace Sections Content */}
+              {activeSection === 'Failure DNA' ? (
+                <FailureDNAPanel dna={run?.failureDna} />
+              ) : activeSection === 'Repair Lab' ? (
+                <RepairLabPanel candidates={run?.repairCandidates} />
+              ) : activeSection === 'Blast Radius' ? (
+                <BlastRadiusPanel impact={run?.impactAnalysis} />
+              ) : activeSection === 'Immunization' ? (
+                <ImmunizationPanel immunization={run?.immunization} />
+              ) : activeSection === 'Failure Lab' ? (
+                <FailureLabPanel />
+              ) : activeSection === 'Capsule' ? (
+                <CapsulePanel runId={runId} capsule={run?.capsule} />
+              ) : activeSection === 'Repository' ? (
                 <div className="space-y-6">
                   <RepositoryPanel repository={run?.repository} />
                   {run ? <RunStatusPanel run={run} /> : null}
                 </div>
+              ) : activeSection === 'Inspection' ? (
+                <InspectionPanel
+                  repository={run?.repository}
+                  sourceFiles={run?.sourceFiles}
+                  durationMs={run?.stages?.find((s) => s.key.includes('inspection'))?.durationMs}
+                />
+              ) : activeSection === 'Architecture' ? (
+                <ArchitecturePanel repository={run?.repository} />
+              ) : activeSection === 'Failure Detection' ? (
+                <FailureDetectionPanel run={run} />
               ) : activeSection === 'Evidence' ? (
                 <div className="space-y-6">
                   <EvidencePanel evidence={run?.evidence ?? []} />
@@ -300,6 +453,15 @@ export default function Investigation() {
                 </div>
               ) : activeSection === 'Investigation' ? (
                 <InvestigationPanel investigation={run?.investigation} />
+              ) : activeSection === 'Source' ? (
+                <IDESourceWorkspace
+                  files={run?.sourceFiles ?? []}
+                  investigation={run?.investigation}
+                  stackTrace={run?.stackTrace}
+                  isFullScreen={isSourceFullScreen}
+                  onToggleFullScreen={() => setIsSourceFullScreen(!isSourceFullScreen)}
+                  onBackToInvestigation={() => handleNavigateSection('overview')}
+                />
               ) : activeSection === 'Patch' ? (
                 <div className="space-y-6">
                   <PatchPanel patch={run?.patch} />
@@ -310,22 +472,38 @@ export default function Investigation() {
                     decisionsLocked={run?.status === 'completed' || run?.status === 'rejected'}
                   />
                 </div>
+              ) : activeSection === 'Compatibility' ? (
+                <CompatibilityPanel compatibility={run?.compatibility} />
               ) : activeSection === 'Replay' ? (
-                <ReplayPanel replay={run?.replay} />
+                <ReplayPanel replay={run?.replay} runStatus={run?.status} />
+              ) : activeSection === 'Build' ? (
+                <BuildPanel build={run?.build} runStatus={run?.status} />
+              ) : activeSection === 'Tests' ? (
+                <TestsPanel tests={run?.tests} runStatus={run?.status} />
               ) : activeSection === 'Validation' ? (
                 <div className="space-y-6">
-                  <CommandResultPanel index="11" title="Build" caption="Build executed against the patched source." result={run?.build} />
-                  <CommandResultPanel index="12" title="Tests" caption="Regression suite executed against the patched source." result={run?.tests} />
-                  <ValidationPanel validation={run?.validation} />
+                  <BuildPanel build={run?.build} runStatus={run?.status} />
+                  <TestsPanel tests={run?.tests} runStatus={run?.status} />
+                  <ValidationPanel validation={run?.validation} runStatus={run?.status} />
                 </div>
+              ) : activeSection === 'Human Approval' ? (
+                <ApprovalPanel
+                  run={run}
+                  onApprove={() => void approve()}
+                  onReject={() => void reject()}
+                  busy={deciding}
+                />
               ) : activeSection === 'Delivery' ? (
                 <DeliveryPanel delivery={run?.delivery} />
+              ) : activeSection === 'Memory Update' ? (
+                <MemoryUpdatePanel update={run?.memoryUpdate} />
               ) : null}
 
-              {/* Human Approval Gate Banner */}
-              {run?.status === 'waiting_for_approval' ? (
+              {/* Human Approval Gate Banner if waiting */}
+              {run?.status === 'waiting_for_approval' && activeSection !== 'Human Approval' ? (
                 <div className="mt-8">
                   <ApprovalPanel
+                    run={run}
                     onApprove={() => void approve()}
                     onReject={() => void reject()}
                     busy={deciding}
@@ -335,18 +513,23 @@ export default function Investigation() {
             </div>
           </main>
 
-          {/* Column C: Persistent Right AI Agent (AutoFix) (~310px) */}
+          {/* Column C: Persistent Right AI Agent (AutoFix) (~300-320px) */}
           <AutoFixAgentPanel
             run={run}
             onQuickAction={(action) => {
-              if (action === 'ghosttrace') {
-                setActiveSection('GhostTrace')
-                setActiveTab('Trace Overview')
-              } else if (action === 'logs') {
-                setActiveTab('Logs (24)')
+              if (action === 'overview') {
+                handleNavigateSection('overview')
+              } else if (action === 'investigation') {
+                handleNavigateSection('investigation')
+              } else if (action === 'logs' || action === 'events') {
+                handleNavigateSection('overview')
+                setActiveTab('Events')
               } else if (action === 'source') {
-                setActiveSection('Source')
-                setActiveTab('Stack Trace')
+                handleNavigateSection('source')
+              } else if (action === 'delivery' || action === 'issue') {
+                handleNavigateSection('delivery')
+              } else if (['patch', 'replay', 'validation', 'ghosttrace', 'memory', 'inspection', 'architecture', 'build', 'tests'].includes(action)) {
+                handleNavigateSection(action)
               }
             }}
           />

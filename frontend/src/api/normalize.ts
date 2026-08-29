@@ -69,18 +69,43 @@ const STAGE_STATUS: Record<string, StageStatus> = {
 const RUN_STATUS: Record<string, RunStatus> = {
   queued: 'queued',
   pending: 'queued',
+  created: 'queued',
   running: 'running',
   in_progress: 'running',
   waiting_for_approval: 'waiting_for_approval',
   awaiting_approval: 'waiting_for_approval',
   approval: 'waiting_for_approval',
+  patch_approved: 'delivery_running',
+  delivery_running: 'delivery_running',
+  delivery_preparing: 'delivery_running',
+  branch_created: 'delivery_running',
+  commit_created: 'delivery_running',
+  pushed: 'delivery_running',
+  pull_request_created: 'delivery_running',
+  delivered: 'delivered',
+  delivery_failed: 'delivery_failed',
   completed: 'completed',
   complete: 'completed',
   success: 'completed',
-  delivered: 'completed',
+  baseline_failure_not_reproduced: 'baseline_failure_not_reproduced',
   failed: 'failed',
   error: 'failed',
   rejected: 'rejected',
+  repository_not_found: 'failed',
+  no_failure_evidence: 'failed',
+  investigation_failed: 'failed',
+  investigation_timeout: 'failed',
+  investigation_schema_error: 'failed',
+  patch_generation_failed: 'failed',
+  patch_context_invalid: 'failed',
+  patch_path_unsafe: 'failed',
+  patch_language_mismatch: 'failed',
+  patch_apply_failed: 'failed',
+  repair_exhausted: 'failed',
+  build_failed: 'failed',
+  tests_failed: 'failed',
+  replay_failed: 'failed',
+  validation_failed: 'failed',
 }
 
 function humanize(value: string): string {
@@ -244,22 +269,37 @@ function normalizePatch(record: JsonRecord | undefined): Patch | undefined {
 
 function normalizeReplaySide(record: JsonRecord | undefined, label: string): ReplaySide | undefined {
   if (!record) return undefined
+  // Guard: don't construct a side from a completely empty record
+  if (Object.keys(record).length === 0) return undefined
+  const resultStr = readString(record, 'result')
+  const passedFromResult = resultStr !== undefined ? resultStr.toUpperCase() === 'PASS' : undefined
   return {
     label,
-    httpStatus: readNumber(record, 'http_status', 'status_code', 'status'),
-    outcome: readString(record, 'outcome', 'result', 'error', 'error_type', 'message'),
-    detail: readString(record, 'detail', 'description', 'body', 'summary'),
-    passed: readBoolean(record, 'passed', 'success', 'ok'),
+    // Backend sends actual_status_code and http_status; http_status is also present as a copy
+    httpStatus: readNumber(record, 'actual_status_code', 'http_status', 'status_code', 'status'),
+    // outcome = actual_behavior string (error code / message)
+    outcome: readString(record, 'actual_behavior', 'outcome', 'error', 'error_type', 'message'),
+    detail: readString(record, 'output', 'detail', 'description', 'body', 'summary', 'execution_output'),
+    passed: readBoolean(record, 'passed', 'success', 'ok') ?? passedFromResult,
   }
 }
 
 function normalizeReplay(record: JsonRecord | undefined): Replay | undefined {
   if (!record) return undefined
+  const origRecord = readRecord(record, 'original', 'before', 'baseline')
+  const patchedRecord = readRecord(record, 'patched', 'after', 'repaired')
+  // If both sides are empty objects (no data yet), treat entire replay as not available
+  const origEmpty = !origRecord || Object.keys(origRecord).length === 0
+  const patchedEmpty = !patchedRecord || Object.keys(patchedRecord).length === 0
+  if (origEmpty && patchedEmpty) return undefined
+  const original = normalizeReplaySide(origRecord, 'Original')
+  const patched = normalizeReplaySide(patchedRecord, 'Patched')
+  const rawSummary = readString(record, 'summary', 'description', 'conclusion')
   return {
-    original: normalizeReplaySide(readRecord(record, 'original', 'before', 'baseline'), 'Original'),
-    patched: normalizeReplaySide(readRecord(record, 'patched', 'after', 'repaired'), 'Patched'),
+    original,
+    patched,
     behaviorChanged: readBoolean(record, 'behavior_changed', 'behaviorChanged', 'changed'),
-    summary: readString(record, 'summary', 'description', 'conclusion'),
+    summary: rawSummary,
   }
 }
 
@@ -418,11 +458,17 @@ function normalizeWorkspaceTrace(record: JsonRecord | undefined): GhostTrace | u
 
 function normalizeWorkspaceValidation(record: JsonRecord | undefined): Validation | undefined {
   if (!record) return undefined
-  const gates: ValidationGate[] = readRecordList(record, 'gates').map((gate, index) => ({
-    name: humanize(readString(gate, 'name') ?? `Gate ${index + 1}`),
-    passed: readBoolean(gate, 'result', 'passed'),
-    detail: readString(gate, 'detail'),
-  }))
+  if (Object.keys(record).length === 0) return undefined
+  const gates: ValidationGate[] = readRecordList(record, 'gates').map((gate, index) => {
+    // Backend sends result as string "PASS" or "FAIL"
+    const resultStr = readString(gate, 'result')
+    const passedFromResult = resultStr !== undefined ? resultStr.toUpperCase() === 'PASS' : undefined
+    return {
+      name: humanize(readString(gate, 'name') ?? `Gate ${index + 1}`),
+      passed: readBoolean(gate, 'passed', 'success') ?? passedFromResult ?? false,
+      detail: readString(gate, 'detail'),
+    }
+  })
   return {
     gates,
     status: readString(record, 'status', 'final'),
@@ -520,7 +566,7 @@ export function normalizeWorkspace(payload: unknown): Run | undefined {
     events: readRecordList(workspace, 'agent_events').map(normalizeAgentEvent),
     commands: readRecordList(workspace, 'command_log').map(normalizeCommand),
     evidence: readRecordList(workspace, 'evidence').map(normalizeWorkspaceEvidence),
-    ghostTrace: normalizeWorkspaceTrace(readRecord(workspace, 'trace')),
+    ghostTrace: normalizeWorkspaceTrace(readRecord(workspace, 'trace') ?? readRecord(workspace, 'ghosttrace')),
     stackTrace: normalizeStackTrace(readRecord(workspace, 'stack_trace')),
     sourceFiles: readRecordList(workspace, 'source').map(normalizeSourceFile),
     changedFiles,
@@ -542,5 +588,11 @@ export function normalizeWorkspace(payload: unknown): Run | undefined {
         return record && Object.keys(record).length > 0 ? record : undefined
       })(),
     ),
+    failureDna: (workspace.failure_dna as any) ?? undefined,
+    repairCandidates: (workspace.repair_candidates as any) ?? [],
+    impactAnalysis: (workspace.impact_analysis as any) ?? undefined,
+    immunization: (workspace.immunization as any) ?? undefined,
+    capsule: (workspace.capsule as any) ?? undefined,
   }
 }
+

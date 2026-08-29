@@ -37,6 +37,7 @@ class CommandExecutionService:
         CommandPolicy.validate_command(command, architecture)
 
         started_at = time.time()
+        use_shell = (platform.system() == "Windows")
         
         try:
             process = subprocess.Popen(
@@ -45,7 +46,7 @@ class CommandExecutionService:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                shell=False
+                shell=use_shell
             )
             
             try:

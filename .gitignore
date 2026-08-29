@@ -7,6 +7,8 @@ env/
 # Production Builds
 dist/
 build/
+out/
+*.vsix
 
 # Environment and Secrets
 .env
@@ -22,6 +24,12 @@ __pycache__/
 .coverage
 htmlcov/
 
+# External Repositories and Duplicate directories
+/JavaAPICheck/
+/codeguardian-vscode/
+backend/tests/e2e/JavaAPICheck/
+backend/tests/e2e/TestRepo/
+
 # Local databases and workspaces
 *.db
 *.sqlite
@@ -30,10 +38,40 @@ htmlcov/
 /backend/workspace/
 /data/
 
-# Logs
+# Logs & test artifacts
 *.log
 logs/
+backend/*.txt
+backend_logs*.txt
+out*.txt
+test_run*.txt
+fail_log.txt
+val_fail.txt
+patch*.txt
+llm_response.txt
+backend/check_*.py
+backend/debug_*.py
+backend/deliver_*.py
+backend/inspect_*.py
+backend/scratch*.py
+backend/test_*.py
+backend/find_*.py
+backend/query_*.py
+backend/model_speed_test.py
+backend/certification_run.py
+backend/execute_manual_certification.py
+backend/final_pr_audit.py
+backend/migrate_file_role.py
+backend/run_e2e.py
+backend/verify_gh_auth.py
+backend/candidate.patch
+backend/patch.json
 
-# System / OS
+# System / OS / IDE
 .DS_Store
 Thumbs.db
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json

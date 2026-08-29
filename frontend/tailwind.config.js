@@ -26,6 +26,11 @@ export default {
           pink: '#FF4D9D',
           purple: '#A56BFF',
         },
+        ide: {
+          base: 'var(--ide-bg)',
+          panel: 'var(--ide-panel)',
+          divider: 'var(--ide-border)',
+        },
       },
       fontFamily: {
         display: ['"Space Grotesk"', 'system-ui', 'sans-serif'],

@@ -1,0 +1,118 @@
+{
+  "name": "codeguardian-vscode",
+  "displayName": "CodeGuardian Autonomous Engineering",
+  "description": "Autonomous failure investigation, counterfactual repair evaluation, regression immunization, and failure capsules for VS Code.",
+  "version": "1.0.0",
+  "publisher": "codeguardian",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Testing",
+    "Linters",
+    "Programming Languages",
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:codeguardian.investigateSelection",
+    "onCommand:codeguardian.loadCapsule",
+    "onCommand:codeguardian.refreshIncidents"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codeguardian-explorer",
+          "title": "CodeGuardian",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "codeguardian-explorer": [
+        {
+          "id": "codeguardian.incidentsView",
+          "name": "Live Incidents & Failure DNA"
+        },
+        {
+          "id": "codeguardian.repairLabView",
+          "name": "Counterfactual Repair Lab"
+        },
+        {
+          "id": "codeguardian.immunizationView",
+          "name": "Failure Immunization Guards"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "codeguardian.investigateSelection",
+        "title": "CodeGuardian: Investigate Selection with Bounded Context",
+        "category": "CodeGuardian"
+      },
+      {
+        "command": "codeguardian.loadCapsule",
+        "title": "CodeGuardian: Import Sealed Failure Capsule (.zip)",
+        "category": "CodeGuardian"
+      },
+      {
+        "command": "codeguardian.refreshIncidents",
+        "title": "CodeGuardian: Refresh Active Incidents",
+        "category": "CodeGuardian",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "codeguardian.openDashboard",
+        "title": "CodeGuardian: Open Investigation Workspace in Browser",
+        "category": "CodeGuardian"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "codeguardian.investigateSelection",
+          "group": "codeguardian@1"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "codeguardian.refreshIncidents",
+          "when": "view == codeguardian.incidentsView",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "CodeGuardian",
+      "properties": {
+        "codeguardian.apiUrl": {
+          "type": "string",
+          "default": "http://localhost:8000",
+          "description": "CodeGuardian Backend API endpoint URL."
+        },
+        "codeguardian.dashboardUrl": {
+          "type": "string",
+          "default": "http://localhost:5173",
+          "description": "CodeGuardian Web IDE Workspace URL."
+        },
+        "codeguardian.boundedContextRadius": {
+          "type": "number",
+          "default": 100,
+          "description": "Line radius extracted above and below selection when querying investigation."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.3.0"
+  }
+}

@@ -58,17 +58,25 @@ def get_run_state(run_id: str, db: Session = Depends(get_db)):
     if not ws:
         raise HTTPException(status_code=404, detail="Run not found")
     
+    raw_stages = ws.get("stages", [])
+    stages_dict = {}
+    if isinstance(raw_stages, list):
+        for s in raw_stages:
+            if isinstance(s, dict) and "id" in s:
+                stages_dict[s["id"]] = s.get("status", "unknown")
+            elif isinstance(s, dict) and "name" in s:
+                stages_dict[s["name"]] = s.get("status", "unknown")
+    elif isinstance(raw_stages, dict):
+        stages_dict = raw_stages
+
     return {
-        "run_id": ws["run"]["id"],
-        "status": ws["run"]["status"],
-        "current_stage": ws["run"]["current_stage"],
-        "mode": ws["run"]["mode"],
-        "stages": {s["id"]: s["status"] for s in ws["stages"]},
-        "results": {
-            "repository": ws.get("repository", {}),
-            "incident": ws.get("incident", {})
-        },
-        "error": ws["run"].get("error")
+        "run_id": str(ws.get("run_id") or ws.get("run", {}).get("id", run_id)),
+        "status": ws.get("status") or ws.get("run", {}).get("status", "unknown"),
+        "current_stage": ws.get("current_stage") or ws.get("run", {}).get("current_stage", "unknown"),
+        "mode": ws.get("mode", "active"),
+        "stages": stages_dict,
+        "results": ws.get("results", {}),
+        "error": ws.get("error") or ws.get("run", {}).get("error")
     }
 
 
@@ -115,3 +123,40 @@ def reject_file(run_id: str, file_id: str, db: Session = Depends(get_db)):
         return svc.record_file_decision(run_id, file_id, "rejected")
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/{run_id}/failure-dna")
+def get_failure_dna(run_id: str, db: Session = Depends(get_db)):
+    svc = WorkspaceService(db)
+    ws = svc.get_run_workspace(run_id)
+    if not ws:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return ws.get("failure_dna", {})
+
+
+@router.get("/{run_id}/repair-candidates")
+def get_repair_candidates(run_id: str, db: Session = Depends(get_db)):
+    svc = WorkspaceService(db)
+    ws = svc.get_run_workspace(run_id)
+    if not ws:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return ws.get("repair_candidates", [])
+
+
+@router.get("/{run_id}/impact")
+def get_impact(run_id: str, db: Session = Depends(get_db)):
+    svc = WorkspaceService(db)
+    ws = svc.get_run_workspace(run_id)
+    if not ws:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return ws.get("impact_analysis", {})
+
+
+@router.get("/{run_id}/immunization")
+def get_immunization(run_id: str, db: Session = Depends(get_db)):
+    svc = WorkspaceService(db)
+    ws = svc.get_run_workspace(run_id)
+    if not ws:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return ws.get("immunization", {})
+

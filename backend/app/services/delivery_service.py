@@ -55,64 +55,159 @@ class GitHubDeliveryProvider(DeliveryProvider):
 
         safe_branch_name = f"codeguardian/fix/{str(incident_id)[:8]}"
         
+        def emit_event(status_type: str, title: str, description: str = None, command: str = None):
+            try:
+                from app.services.event_logger import BackendEventLogger
+                from app.db.models import Run
+                run = db.query(Run).filter(Run.incident_id == incident_id).first()
+                if run:
+                    event_logger = BackendEventLogger(db, str(run.id))
+                    event_logger.emit(status_type, title, description=description, command=command)
+            except Exception as e:
+                logger.warning(f"Failed to emit delivery event: {e}")
+
         try:
+            emit_event("STATUS", "DELIVERY_STARTED", "Initiating automated delivery to GitHub repository.")
+            
             default_branch = self.github_client.get_default_branch(owner, repo)
             base_sha = self.github_client.get_branch_sha(owner, repo, default_branch)
             
+            emit_event("STATUS", "DELIVERY_WORKSPACE_PREPARED", f"Default branch {default_branch} isolated at commit {base_sha[:8]}.")
+            
             try:
                 self.github_client.create_branch(owner, repo, safe_branch_name, base_sha)
+                emit_event("STATUS", "DELIVERY_BRANCH_CREATED", f"Feature branch {safe_branch_name} created on GitHub.")
             except GitHubError as e:
                 if e.status_code != 422:
                     raise
+                emit_event("STATUS", "DELIVERY_BRANCH_CREATED", f"Feature branch {safe_branch_name} already exists.")
 
-            # Instead of real local git workspace clone, we simulate the delivery since we are isolated here, 
-            # or we could use GitHub API to commit and push. The simplest true GitHub PR creation is via API.
             import base64
-            
-            file_path = patch.affected_files[0]
-            file_sha = self.github_client.get_file_sha(owner, repo, file_path, safe_branch_name)
-            original_content = self.github_client.get_file_content(owner, repo, file_path, safe_branch_name)
-            
-            # Use real GitWorkspace to apply patch
             import tempfile, os
+
+            # Set up temp workspace with the repo files to apply multi-file patch cleanly
             with tempfile.TemporaryDirectory() as temp_dir:
-                temp_file_path = os.path.join(temp_dir, file_path)
-                os.makedirs(os.path.dirname(temp_file_path), exist_ok=True)
-                with open(temp_file_path, "w", encoding="utf-8") as f:
-                    f.write(original_content)
+                # Write and track all affected files
+                for aff in (patch.affected_files or []):
+                    aff_path = os.path.join(temp_dir, aff)
+                    os.makedirs(os.path.dirname(aff_path), exist_ok=True)
+                    orig_f = self.github_client.get_file_content(owner, repo, aff, default_branch)
+                    with open(aff_path, "w", encoding="utf-8", newline="\n") as f:
+                        f.write(orig_f)
+
                 patch_file = os.path.join(temp_dir, "candidate.patch")
-                with open(patch_file, "w", encoding="utf-8") as f:
-                    f.write(patch.diff)
-                
+                # Format patch diff with standard git headers
+                formatted_patch_lines = []
+                for line in patch.diff.splitlines():
+                    l_str = line.rstrip("\r")
+                    if l_str.startswith("--- "):
+                        hp = l_str[4:].strip()
+                        if hp.startswith("a/"):
+                            hp = hp[2:]
+                        target_f = hp
+                        for aff in (patch.affected_files or []):
+                            if aff == hp or aff.endswith("/" + hp):
+                                target_f = aff
+                                break
+                        l_str = f"--- a/{target_f}"
+                        if not formatted_patch_lines or not formatted_patch_lines[-1].startswith("diff --git"):
+                            formatted_patch_lines.append(f"diff --git a/{target_f} b/{target_f}")
+                    elif l_str.startswith("+++ "):
+                        hp = l_str[4:].strip()
+                        if hp.startswith("b/"):
+                            hp = hp[2:]
+                        target_f = hp
+                        for aff in (patch.affected_files or []):
+                            if aff == hp or aff.endswith("/" + hp):
+                                target_f = aff
+                                break
+                        l_str = f"+++ b/{target_f}"
+
+                    if l_str == "":
+                        formatted_patch_lines.append(" ")
+                    else:
+                        formatted_patch_lines.append(l_str)
+
+                with open(patch_file, "w", encoding="utf-8", newline="\n") as f:
+                    f.write("\n".join(formatted_patch_lines) + "\n")
+
                 gw = GitWorkspace(temp_dir)
                 gw.command_service.execute_command(["git", "init"], temp_dir, 30)
+                gw.command_service.execute_command(["git", "config", "core.autocrlf", "false"], temp_dir, 30)
                 gw.command_service.execute_command(["git", "add", "."], temp_dir, 30)
-                apply_res = gw.apply_patch(temp_dir, "candidate.patch")
+
+                apply_res = gw.command_service.execute_command(
+                    ["git", "apply", "--recount", "--unidiff-zero", "--ignore-space-change", "--ignore-whitespace", "candidate.patch"],
+                    cwd=temp_dir, timeout_seconds=30, architecture="git"
+                )
+
                 if apply_res.get("exit_code") != 0:
+                    emit_event("STATUS", "DELIVERY_FAILED", f"Patch application failed: {apply_res.get('stderr')}")
                     return PullRequestDeliveryResponse(incident_id=incident_id, patch_id=patch.id, status="failed", repository=repo, branch=safe_branch_name, error_details="Patch application failed.")
-                    
-                with open(temp_file_path, "r", encoding="utf-8") as f:
-                    new_content = f.read()
+
+                # Read modified contents for all affected files
+                modified_files = {}
+                for aff in (patch.affected_files or []):
+                    aff_path = os.path.join(temp_dir, aff)
+                    if os.path.exists(aff_path):
+                        with open(aff_path, "r", encoding="utf-8") as f:
+                            modified_files[aff] = f.read()
+
+            emit_event("STATUS", "DELIVERY_PATCH_VERIFIED", "Validated patch verified against target branch context.")
 
             commit_message = f"fix: resolve issue {str(incident_id)[:8]}"
-            new_content_base64 = base64.b64encode(new_content.encode('utf-8')).decode('utf-8')
-            self.github_client.update_file(owner, repo, file_path, safe_branch_name, new_content_base64, commit_message, file_sha)
+            emit_event("STATUS", "DELIVERY_PUSH_STARTED", f"Pushing validated changes to branch {safe_branch_name}...")
+
+            for aff_file, mod_content in modified_files.items():
+                f_sha = self.github_client.get_file_sha(owner, repo, aff_file, safe_branch_name)
+                content_b64 = base64.b64encode(mod_content.encode('utf-8')).decode('utf-8')
+                self.github_client.update_file(owner, repo, aff_file, safe_branch_name, content_b64, commit_message, f_sha)
+
+            emit_event("STATUS", "DELIVERY_BRANCH_PUSHED", f"Changes committed and pushed to {safe_branch_name}.")
             
             title = commit_message
-            body = "Generated by CodeGuardian after validation."
-            pr_data = self.github_client.create_pull_request(owner, repo, title, safe_branch_name, default_branch, body)
+            body = "Generated by CodeGuardian after automated validation and human operator approval."
+            
+            emit_event("STATUS", "DELIVERY_PR_CREATING", f"Opening Pull Request from {safe_branch_name} into {default_branch}...")
+            try:
+                pr_data = self.github_client.create_pull_request(owner, repo, title, safe_branch_name, default_branch, body)
+                pr_number = pr_data.get("number")
+                pr_url = pr_data.get("html_url")
+            except GitHubError as e:
+                if e.status_code == 422:
+                    # PR already exists, fetch it
+                    try:
+                        all_prs = self.github_client._request("GET", f"/repos/{owner}/{repo}/pulls?head={owner}:{safe_branch_name}").json()
+                        if all_prs and len(all_prs) > 0:
+                            pr_number = all_prs[0].get("number")
+                            pr_url = all_prs[0].get("html_url")
+                        else:
+                            raise
+                    except Exception:
+                        raise e
+                else:
+                    raise
+            
+            emit_event("STATUS", "DELIVERY_PR_CREATED", f"Pull Request #{pr_number} successfully created: {pr_url}")
+
+            from app.db.models import Run, Repository
+            run_obj = db.query(Run).filter(Run.incident_id == incident_id).first()
+            repo_id = run_obj.repository_id if run_obj and run_obj.repository_id else None
+            if not repo_id:
+                first_repo = db.query(Repository).first()
+                repo_id = first_repo.id if first_repo else None
 
             pr_repo = PullRequestRepository(db)
             new_pr = PullRequest(
                 id=uuid.uuid4(),
                 incident_id=incident_id,
                 patch_id=patch.id,
-                repository_id=uuid.uuid4(),
+                repository_id=repo_id,
                 provider="github",
                 branch_name=safe_branch_name,
                 base_branch=default_branch,
-                external_pr_number=pr_data.get("number"),
-                external_pr_url=pr_data.get("html_url"),
+                external_pr_number=pr_number,
+                external_pr_url=pr_url,
                 title=title,
                 description=body,
                 validation_summary="Build/Test checks were executed in the controlled prototype validation environment.",
@@ -122,6 +217,8 @@ class GitHubDeliveryProvider(DeliveryProvider):
             )
             pr_repo.save(new_pr)
             
+            emit_event("STATUS", "DELIVERY_COMPLETED", f"Delivery completed. Pull Request #{pr_number} open on GitHub.")
+
             return PullRequestDeliveryResponse(
                 incident_id=incident_id,
                 patch_id=patch.id,
@@ -129,13 +226,14 @@ class GitHubDeliveryProvider(DeliveryProvider):
                 repository=repo,
                 branch=safe_branch_name,
                 pull_request=PullRequestInfo(
-                    number=pr_data.get("number") or 0,
-                    url=pr_data.get("html_url") or "",
+                    number=pr_number or 0,
+                    url=pr_url or "",
                     state="open"
                 )
             )
 
         except GitHubError as e:
+            emit_event("STATUS", "DELIVERY_FAILED", f"GitHub API Error {e.status_code}: {e.message}")
             return PullRequestDeliveryResponse(
                 incident_id=incident_id,
                 patch_id=patch.id,
@@ -179,7 +277,7 @@ class DeliveryService:
                 )
             )
 
-        if patch.incident_id != incident_id:
+        if str(patch.incident_id) != str(incident_id):
             raise ValueError(f"Patch {patch_id} does not belong to incident {incident_id}")
 
         if patch.status != "validated":
@@ -198,12 +296,12 @@ class DeliveryService:
         res = provider.deliver(incident_id, patch, repository_url, self.db)
         
         if res.status == "DELIVERY_AUTH_REQUIRED":
-            incident.status = "DELIVERY_AUTH_REQUIRED"
+            incident.status = "failed"
         elif res.status == "pr_created":
             incident.status = "pr_created"
             patch.status = "pushed"
         else:
-            incident.status = "DELIVERY_FAILED"
+            incident.status = "failed"
             
         self.db.flush()
         return res

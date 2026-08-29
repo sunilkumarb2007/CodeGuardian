@@ -37,7 +37,9 @@ def test_replay_engine_rejects_path_traversal():
     )
     
     # Engine should reject
-    assert engine._apply_patch(".", patch) == False
+    ok, err = engine._apply_patch(".", patch)
+    assert ok == False
+    assert "UNSAFE" in err or "INVALID" in err
 
 def test_replay_engine_rejects_absolute_path_patch():
     engine = ReplayEngine()
@@ -57,5 +59,7 @@ def test_replay_engine_rejects_absolute_path_patch():
     )
     
     # Engine should reject
-    assert engine._apply_patch(".", patch) == False
+    ok, err = engine._apply_patch(".", patch)
+    assert ok == False
+    assert "UNSAFE" in err or "INVALID" in err
 

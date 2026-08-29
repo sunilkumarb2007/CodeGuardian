@@ -7,7 +7,7 @@ export default function App() {
     <Router>
       <Routes>
         <Route path="/" element={<Landing />} />
-        <Route path="/runs/:runId" element={<Investigation />} />
+        <Route path="/runs/:runId/*" element={<Investigation />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>

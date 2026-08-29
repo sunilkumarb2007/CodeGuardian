@@ -217,6 +217,9 @@ class RepositoryFile(Base):
     language = Column(String(50), nullable=True)
     file_hash = Column(String(128), nullable=True)
     source_snapshot = Column(Text, nullable=True)
+    # Classifies files for context priority: SOURCE, TEST, CONFIGURATION, DOCUMENTATION
+    # DOCUMENTATION files are non-authoritative and must not be used for patch generation.
+    file_role = Column(String(50), nullable=True)
     created_at = Column(TIMESTAMP, nullable=False)
     updated_at = Column(TIMESTAMP, nullable=False)
 
@@ -564,3 +567,130 @@ class RunAction(Base):
     action_type = Column(String, nullable=False)
     payload = Column(JSONType, nullable=True)
     created_at = Column(TIMESTAMP, nullable=False)
+
+
+# ==============================================================================
+# ADVANCED PRODUCT EXPANSION MODELS
+# ==============================================================================
+
+class FailureDNA(Base):
+    __tablename__ = 'failure_dna'
+
+    id = Column(GUID, primary_key=True, default=uuid.uuid4, nullable=False)
+    incident_id = Column(GUID, ForeignKey('incidents.id'), nullable=False)
+    run_id = Column(GUID, ForeignKey('runs.id'), nullable=True)
+    trigger = Column(String(255), nullable=True)
+    request_method = Column(String(20), nullable=True)
+    request_endpoint = Column(String(500), nullable=True)
+    http_status = Column(Integer, nullable=True)
+    exception_class = Column(String(255), nullable=True)
+    normalized_message = Column(Text, nullable=True)
+    propagation_chain = Column(JSONType, nullable=False, default=list)
+    failure_point = Column(String(255), nullable=True)
+    dependency_type = Column(String(100), nullable=True)
+    fingerprint = Column(String(255), nullable=False, index=True)
+    recurrence_count = Column(Integer, nullable=False, default=1)
+    resolved_count = Column(Integer, nullable=False, default=0)
+    created_at = Column(TIMESTAMP, nullable=False)
+    updated_at = Column(TIMESTAMP, nullable=False)
+
+
+class RepairCandidate(Base):
+    __tablename__ = 'repair_candidates'
+
+    id = Column(GUID, primary_key=True, default=uuid.uuid4, nullable=False)
+    incident_id = Column(GUID, ForeignKey('incidents.id'), nullable=False)
+    run_id = Column(GUID, ForeignKey('runs.id'), nullable=True)
+    candidate_label = Column(String(100), nullable=False)
+    description = Column(Text, nullable=False)
+    patch_diff = Column(Text, nullable=False)
+    assumptions = Column(JSONType, nullable=True)
+    expected_behavior = Column(Text, nullable=True)
+    is_recommended = Column(Boolean, nullable=False, default=False)
+    created_at = Column(TIMESTAMP, nullable=False)
+
+
+class RepairEvaluation(Base):
+    __tablename__ = 'repair_evaluations'
+
+    id = Column(GUID, primary_key=True, default=uuid.uuid4, nullable=False)
+    candidate_id = Column(GUID, ForeignKey('repair_candidates.id'), nullable=False)
+    incident_id = Column(GUID, ForeignKey('incidents.id'), nullable=False)
+    run_id = Column(GUID, ForeignKey('runs.id'), nullable=True)
+    safety_status = Column(String(40), nullable=False)  # PASS, FAILED, NOT_MEASURED
+    build_status = Column(String(40), nullable=False)
+    tests_status = Column(String(40), nullable=False)
+    replay_status = Column(String(40), nullable=False)
+    semantic_risk = Column(String(40), nullable=False)  # LOW, MEDIUM, HIGH, NOT_MEASURED
+    blast_radius_risk = Column(String(40), nullable=False)  # LOW, MEDIUM, HIGH, NOT_MEASURED
+    final_status = Column(String(40), nullable=False)  # ACCEPTED, REJECTED, EVALUATING
+    rejection_reason = Column(Text, nullable=True)
+    created_at = Column(TIMESTAMP, nullable=False)
+
+
+class RegressionGuard(Base):
+    __tablename__ = 'regression_guards'
+
+    id = Column(GUID, primary_key=True, default=uuid.uuid4, nullable=False)
+    incident_id = Column(GUID, ForeignKey('incidents.id'), nullable=False)
+    repository_id = Column(GUID, ForeignKey('repositories.id'), nullable=True)
+    fingerprint = Column(String(255), nullable=False, index=True)
+    test_path = Column(Text, nullable=False)
+    test_name = Column(String(255), nullable=False)
+    test_code = Column(Text, nullable=False)
+    validation_status = Column(String(40), nullable=False)  # PASSED, FAILED, PENDING
+    source_commit = Column(String(100), nullable=True)
+    is_active = Column(Boolean, nullable=False, default=False)
+    failure_scenario = Column(Text, nullable=True)
+    created_at = Column(TIMESTAMP, nullable=False)
+
+
+class ImpactAnalysis(Base):
+    __tablename__ = 'impact_analyses'
+
+    id = Column(GUID, primary_key=True, default=uuid.uuid4, nullable=False)
+    incident_id = Column(GUID, ForeignKey('incidents.id'), nullable=False)
+    patch_id = Column(GUID, ForeignKey('patches.id'), nullable=True)
+    run_id = Column(GUID, ForeignKey('runs.id'), nullable=True)
+    changed_files = Column(JSONType, nullable=False, default=list)
+    changed_symbols = Column(JSONType, nullable=False, default=list)
+    affected_callers = Column(JSONType, nullable=False, default=list)
+    affected_modules = Column(JSONType, nullable=False, default=list)
+    affected_services = Column(JSONType, nullable=False, default=list)
+    affected_tests = Column(JSONType, nullable=False, default=list)
+    affected_endpoints = Column(JSONType, nullable=False, default=list)
+    affected_dependencies = Column(JSONType, nullable=False, default=list)
+    unknown_edges_count = Column(Integer, nullable=False, default=0)
+    risk_level = Column(String(30), nullable=False)  # LOW, MEDIUM, HIGH
+    created_at = Column(TIMESTAMP, nullable=False)
+
+
+class FailureCapsule(Base):
+    __tablename__ = 'failure_capsules'
+
+    id = Column(GUID, primary_key=True, default=uuid.uuid4, nullable=False)
+    incident_id = Column(GUID, ForeignKey('incidents.id'), nullable=False)
+    run_id = Column(GUID, ForeignKey('runs.id'), nullable=True)
+    fingerprint = Column(String(255), nullable=False)
+    version = Column(String(30), nullable=False, default='1.0.0')
+    manifest = Column(JSONType, nullable=False)
+    redactions_applied = Column(JSONType, nullable=False, default=list)
+    capsule_path = Column(Text, nullable=True)
+    size_bytes = Column(Integer, nullable=False, default=0)
+    created_at = Column(TIMESTAMP, nullable=False)
+
+
+class FailureScenario(Base):
+    __tablename__ = 'failure_scenarios'
+
+    id = Column(GUID, primary_key=True, default=uuid.uuid4, nullable=False)
+    scenario_id = Column(String(100), nullable=False, unique=True, index=True)
+    name = Column(String(255), nullable=False)
+    category = Column(String(100), nullable=False)
+    description = Column(Text, nullable=True)
+    fixture_repository = Column(Text, nullable=True)
+    failure_signature = Column(JSONType, nullable=False)
+    expected_trace = Column(JSONType, nullable=False)
+    expected_root_cause = Column(Text, nullable=True)
+    created_at = Column(TIMESTAMP, nullable=False)
+

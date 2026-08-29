@@ -1,4 +1,5 @@
 import type { Run } from '../../api/types'
+import { resolveRunPresentation } from '../../api/presentation'
 
 export function IDEStatusBar({
   run,
@@ -7,13 +8,14 @@ export function IDEStatusBar({
   run?: Run
   runId: string
 }) {
-  const completedStages = run?.stages?.filter((s) => s.status === 'passed' || s.status === 'completed' || s.status === 'skipped').length || 4
-  const totalStages = 17
-  const progressPercent = Math.round((completedStages / totalStages) * 100)
+  const presentation = resolveRunPresentation(run)
+  const completedStages = presentation.passedCount
+  const totalStages = presentation.totalStages
+  const progressPercent = presentation.progressPercent
   const displayRunId = runId ? `INV-${runId.slice(0, 4).toUpperCase()}` : 'INV-1042'
 
   return (
-    <footer className="h-9 border-t border-white/[0.08] bg-[#070A0B] px-4 flex items-center justify-between shrink-0 select-none z-30 text-xs font-mono text-zinc-400">
+    <footer className="h-9 border-t border-ide-divider bg-ide-base px-4 flex items-center justify-between shrink-0 select-none z-30 text-xs font-mono text-zinc-400">
       {/* Left: Investigation Stage Progress */}
       <div className="flex items-center gap-4">
         <span>
@@ -23,7 +25,7 @@ export function IDEStatusBar({
         <span>
           Stage <span className="text-zinc-200">{completedStages}</span> / {totalStages}
         </span>
-        <div className="w-24 h-1.5 bg-[#0F1518] border border-white/[0.08] rounded-full overflow-hidden">
+        <div className="w-24 h-1.5 bg-ide-panel border border-ide-divider rounded-full overflow-hidden">
           <div
             className="h-full bg-lime transition-all duration-500 rounded-full"
             style={{ width: `${progressPercent}%` }}

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { motion, useScroll, useTransform } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { ApiError, startRun } from '../api/client'
@@ -69,14 +69,14 @@ const PIPELINE_GROUPS = [
 ]
 
 const FAQ = [
-  { q: 'WHY DOES CODEGUARDIAN NEED GHOSTTRACE?', a: 'Because the visible error is often only the symptom. GhostTrace reconstructs the causal path so investigation begins at the component that actually failed.' },
-  { q: 'WHAT DOES THE AI ACTUALLY DO?', a: 'The investigator interprets verified evidence, identifies the likely root cause, and proposes a constrained patch. It does not directly execute code or declare the repair valid.' },
-  { q: 'HOW DOES CODEGUARDIAN STOP UNSAFE AI PATCHES?', a: 'Every patch is checked for file scope, language compatibility, path safety, patch context, build behavior, tests, and replay results before delivery.' },
-  { q: 'WHY IS FAILURE MEMORY DIFFERENT FROM A NORMAL AI CHAT HISTORY?', a: 'Failure Memory stores validated engineering repairs and their evidence, allowing future investigations to reference previously proven solutions.' },
-  { q: 'WHAT HAPPENS IF THE PATCH FAILS?', a: 'The patch is rejected, the validation evidence becomes repair context, and the investigator can produce another candidate within the bounded repair loop.' },
-  { q: 'CAN CODEGUARDIAN MERGE THE PR BY ITSELF?', a: 'No. CodeGuardian can prepare and deliver a validated feature branch and PR, but human review remains the final merge boundary.' },
-  { q: 'WHY NOT LET THE AI DIRECTLY EDIT THE REPOSITORY?', a: 'Because generation and verification are separate responsibilities. The AI proposes the repair; CodeGuardian controls execution and proof.' },
-  { q: 'WHAT MAKES CODEGUARDIAN DIFFERENT?', a: 'It connects evidence, causal tracing, historical repair memory, constrained AI investigation, isolated replay, validation, and human-reviewed Git delivery into one deterministic repair pipeline.' },
+  { q: 'Why is CodeGuardian different from a standard AI code fixer?', a: 'Because the AI is not the authority. CodeGuardian reconstructs the failure, bounds the context, evaluates multiple repair candidates, replays the original behavior, validates the change through deterministic gates, and requires explicit human approval before delivery.' },
+  { q: 'What is Failure DNA?', a: 'Failure DNA assigns a stable behavioral fingerprint and causal hash to an incident, allowing CodeGuardian to match current errors against previously validated resolutions.' },
+  { q: 'Why does GhostTrace exist?', a: 'A stack trace tells you where execution stopped. GhostTrace reconstructs the causal execution flow from the ingress gateway down to the actual failing component.' },
+  { q: 'What happens when AI generates a bad repair?', a: 'The repair is rejected by deterministic safety, compatibility, build, test, and replay gates. Generation alone never makes a repair deliverable.' },
+  { q: 'Why generate multiple repair candidates?', a: 'The first syntactically working repair is not always the safest. The Counterfactual Repair Lab compares alternative strategies using concrete test and replay evidence.' },
+  { q: 'What is Failure Immunization?', a: 'After a repair is validated, CodeGuardian synthesizes an automated regression guard so the same failure pattern cannot silently recur in future builds.' },
+  { q: 'Can CodeGuardian merge changes automatically?', a: 'No. Delivery requires a fully validated repair and explicit human approval.' },
+  { q: 'What happens when CodeGuardian cannot prove a failure?', a: 'It stops safely rather than inventing an unverified fix.' },
 ]
 
 const STACK = [
@@ -90,6 +90,27 @@ const STACK = [
   { name: 'FastAPI', role: 'Backend API', desc: 'Exposes the run lifecycle, repository processing, approval, validation, system health, and delivery interfaces.', icon: 'API' },
   { name: 'Java + Maven', role: 'Example execution target', desc: 'One supported application stack used by the CodeGuardian reference failure scenario and replay/validation pipeline.', icon: 'JAV' },
   { name: 'React + TypeScript', role: 'Operator workspace', desc: 'Powers the CodeGuardian engineering interface where investigators inspect evidence, agent activity, patches, replay, validation, and delivery.', icon: 'TS' },
+]
+
+const SUPPORTED_PLATFORMS = [
+  { name: 'Android', icon: '🤖' },
+  { name: 'Kotlin', icon: '🟣' },
+  { name: 'Python', icon: '🐍' },
+  { name: 'Apple / Swift', icon: '🍎' },
+  { name: 'Native (C/C++)', icon: '⚙️' },
+  { name: 'React Native', icon: '⚛️' },
+  { name: 'Dart / Flutter', icon: '🎯' },
+  { name: '.NET / C#', icon: '🔷' },
+  { name: 'Ruby', icon: '💎' },
+  { name: 'Elixir', icon: '💧' },
+  { name: 'Rust', icon: '🦀' },
+  { name: 'Go', icon: '🔵' },
+  { name: 'PHP', icon: '🐘' },
+  { name: 'Java / Spring', icon: '☕' },
+  { name: 'JavaScript / Node', icon: '🟨' },
+  { name: 'TypeScript / React', icon: '🟦' },
+  { name: 'PowerShell', icon: '💻' },
+  { name: 'Docker / Compose', icon: '🐳' },
 ]
 
 function ScrollStory() {
@@ -138,8 +159,47 @@ interface ErrorState {
 export default function Landing() {
   const navigate = useNavigate()
   const [repositoryUrl, setRepositoryUrl] = useState(DEFAULT_REPOSITORY)
+  const [failureInput, setFailureInput] = useState<Record<string, unknown> | undefined>(undefined)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<ErrorState | undefined>(undefined)
+  const [copiedCli, setCopiedCli] = useState(false)
+
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search)
+      const repo = params.get('repo')
+      if (repo) {
+        setRepositoryUrl(repo)
+      }
+      const requestId = params.get('requestId')
+      const errorCode = params.get('errorCode')
+      const failureType = params.get('failureType') || errorCode
+      const message = params.get('message')
+      const service = params.get('service')
+      const source = params.get('source') || 'RUNTIME'
+      const file = params.get('file')
+      const line = params.get('line')
+      const timestamp = params.get('timestamp') || new Date().toISOString()
+      const exception = params.get('exception')
+
+      if (failureType || message || file) {
+        setFailureInput({
+          failure_type: failureType || 'NULL_OBJECT_ACCESS',
+          message: message || `Unhandled runtime error in ${file || service || 'application'}`,
+          source: source || 'RUNTIME',
+          timestamp: timestamp,
+          request_id: requestId || undefined,
+          service: service || undefined,
+          source_file: file || undefined,
+          source_line: line ? parseInt(line, 10) : undefined,
+          exception: exception || undefined,
+          stack_trace: exception ? `${exception}: Null pointer dereference at ${file || 'service'}:${line || 1}` : undefined,
+        })
+      }
+    } catch {
+      // Ignore URL parsing errors
+    }
+  }, [])
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -156,7 +216,7 @@ export default function Landing() {
     setSubmitting(true)
     setError(undefined)
     try {
-      const payload = await startRun(trimmedUrl)
+      const payload = await startRun(trimmedUrl, failureInput)
       const runId = readString(asRecord(payload), 'run_id', 'runId', 'id')
       if (!runId) {
         setError({
@@ -190,6 +250,12 @@ export default function Landing() {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const handleCopyCli = () => {
+    navigator.clipboard.writeText('code --install-extension codeguardian.vsix')
+    setCopiedCli(true)
+    setTimeout(() => setCopiedCli(false), 2000)
   }
 
   return (
@@ -337,7 +403,6 @@ export default function Landing() {
             <div className="mt-16 flex flex-col gap-12">
               {PIPELINE_GROUPS.map((group, groupIndex) => (
                 <div key={group.name} className="relative">
-                  {/* Subtle progression indicator */}
                   {groupIndex > 0 && (
                     <div className="absolute -top-8 left-4 h-4 w-px bg-lime/30 sm:left-8" />
                   )}
@@ -380,9 +445,142 @@ export default function Landing() {
           </div>
         </section>
 
+        {/* PLATFORM-SPECIFIC ARCHITECTURE & VS CODE EXTENSION (Sentry-style dark card grid) */}
+        <section className="px-4 py-28 sm:px-8 border-t-2 border-ink-800 bg-[#06080A]">
+          <div className="mx-auto max-w-[1400px] space-y-20">
+            {/* Header & Quick Setup Cards */}
+            <div className="text-center max-w-4xl mx-auto space-y-4">
+              <span className="font-mono text-xs uppercase tracking-[0.28em] text-lime font-bold">
+                INTEGRATION ECOSYSTEM
+              </span>
+              <h2 className="display-lg text-white">Get started with CodeGuardian</h2>
+              <p className="text-lg text-ink-300 leading-relaxed">
+                Everything you need to reconstruct failures, replay causal traces, and deploy verified fixes directly in your workflow.
+              </p>
+            </div>
+
+            {/* 2 Setup Cards */}
+            <div className="grid md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+              <div className="p-8 rounded-2xl border border-white/[0.1] bg-[#0C1114] space-y-6 hover:border-lime/40 transition-all shadow-xl">
+                <div className="flex items-center gap-3">
+                  <div className="h-9 w-9 rounded-lg bg-lime/10 border border-lime/30 flex items-center justify-center text-lime font-bold text-lg">
+                    ⚡
+                  </div>
+                  <div>
+                    <h3 className="font-display font-bold text-white text-lg">CodeGuardian for VS Code</h3>
+                    <p className="text-xs text-ink-400">Inspect incidents and replay fixes directly in your editor</p>
+                  </div>
+                </div>
+                <div className="p-3 bg-ide-base rounded-xl border border-ide-divider flex items-center justify-between font-mono text-xs text-zinc-300">
+                  <span className="truncate pr-2">code --install-extension codeguardian.vsix</span>
+                  <button
+                    type="button"
+                    onClick={handleCopyCli}
+                    className="p-1 text-zinc-400 hover:text-lime transition-colors shrink-0"
+                    title="Copy command"
+                  >
+                    {copiedCli ? '✓' : '📋'}
+                  </button>
+                </div>
+                <div className="flex items-center gap-3 pt-2">
+                  <a
+                    href="http://localhost:8000/api/extension/download"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-4 py-2 rounded-lg bg-lime text-ink-900 font-bold text-xs hover:bg-lime/90 transition-colors inline-block"
+                  >
+                    Install Extension (.vsix) →
+                  </a>
+                </div>
+              </div>
+
+              <div className="p-8 rounded-2xl border border-white/[0.1] bg-[#0C1114] space-y-6 hover:border-white/[0.2] transition-all shadow-xl">
+                <div className="flex items-center gap-3">
+                  <div className="h-9 w-9 rounded-lg bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400 font-bold text-lg">
+                    🌐
+                  </div>
+                  <div>
+                    <h3 className="font-display font-bold text-white text-lg">Launch Web IDE Workspace</h3>
+                    <p className="text-xs text-ink-400">Autonomous 17-stage investigation in your browser</p>
+                  </div>
+                </div>
+                <p className="text-sm text-zinc-400 leading-relaxed">
+                  Paste any public or authenticated GitHub repository URL to initiate full GhostTrace causal mapping, Failure DNA generation, and replay proof.
+                </p>
+                <div className="pt-2">
+                  <a
+                    href="#investigate"
+                    className="px-4 py-2 rounded-lg bg-ink-800 border border-white/[0.12] text-white font-bold text-xs hover:bg-ink-700 transition-colors inline-block"
+                  >
+                    Start Investigation →
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            {/* Platform-Specific Architecture Grid (Matching Sentry reference) */}
+            <div className="space-y-8">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-ide-divider pb-6">
+                <div>
+                  <h3 className="font-display text-2xl font-bold text-white">Supported Engineering Stacks</h3>
+                  <p className="text-sm text-ink-400 mt-1">If you write code in it, CodeGuardian can inspect and prove repairs for it.</p>
+                </div>
+                <div className="font-mono text-xs text-zinc-500 px-3 py-1.5 rounded-lg bg-[#0C1114] border border-ide-divider">
+                  18 Environments Supported
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                {SUPPORTED_PLATFORMS.map((platform) => (
+                  <div
+                    key={platform.name}
+                    className="flex items-center justify-between p-3.5 rounded-xl border border-ide-divider bg-[#0B0F12] hover:bg-[#12181C] hover:border-lime/40 cursor-pointer transition-all group"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="text-base">{platform.icon}</span>
+                      <span className="font-mono text-xs font-semibold text-zinc-200 group-hover:text-white truncate">
+                        {platform.name}
+                      </span>
+                    </div>
+                    <span className="text-zinc-600 group-hover:text-lime transition-colors text-sm font-bold">
+                      ›
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* 4 Bottom Product Pillar Cards (Matching Sentry Docs bottom cards) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-4 border-t border-ide-divider">
+              <div className="p-5 rounded-xl border border-ide-divider bg-[#0A0E10] space-y-2">
+                <span className="font-mono text-[10px] uppercase font-bold text-lime">FAILURE DNA</span>
+                <h4 className="font-display text-sm font-bold text-white">Fingerprint Hashing</h4>
+                <p className="text-xs text-zinc-400">Stable behavioral identity maps production errors directly to known historical resolutions.</p>
+              </div>
+
+              <div className="p-5 rounded-xl border border-ide-divider bg-[#0A0E10] space-y-2">
+                <span className="font-mono text-[10px] uppercase font-bold text-purple-400">REPAIR LAB</span>
+                <h4 className="font-display text-sm font-bold text-white">Counterfactual Proof</h4>
+                <p className="text-xs text-zinc-400">Evaluates Candidates A, B, and C against isolated replay runs and compiler verification gates.</p>
+              </div>
+
+              <div className="p-5 rounded-xl border border-ide-divider bg-[#0A0E10] space-y-2">
+                <span className="font-mono text-[10px] uppercase font-bold text-amber-400">IMMUNIZATION</span>
+                <h4 className="font-display text-sm font-bold text-white">Regression Guards</h4>
+                <p className="text-xs text-zinc-400">Synthesizes executable JUnit 5 and Vitest suites to permanently prevent defect recurrence.</p>
+              </div>
+
+              <div className="p-5 rounded-xl border border-ide-divider bg-[#0A0E10] space-y-2">
+                <span className="font-mono text-[10px] uppercase font-bold text-blue-400">CAPSULES</span>
+                <h4 className="font-display text-sm font-bold text-white">Portable Artifacts</h4>
+                <p className="text-xs text-zinc-400">Sanitized, path-traversal-safe zip packages containing complete verifiable incident evidence.</p>
+              </div>
+            </div>
+          </div>
+        </section>
 
         {/* FAQ */}
-        <section id="faq" className="px-4 py-24 sm:px-8">
+        <section id="faq" className="px-4 py-24 sm:px-8 border-t-2 border-ink-800">
           <div className="mx-auto max-w-[1000px]">
             <Reveal>
               <Eyebrow>Straight Answers</Eyebrow>

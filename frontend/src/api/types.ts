@@ -12,9 +12,19 @@ export type RunStatus =
   | 'queued'
   | 'running'
   | 'waiting_for_approval'
-  | 'completed'
   | 'failed'
+  | 'investigation_failed'
+  | 'patch_apply_failed'
+  | 'replay_failed'
+  | 'validation_failed'
+  | 'baseline_failure_not_reproduced'
+  | 'no_failure_found'
+  | 'no_failure_evidence'
+  | 'completed'
   | 'rejected'
+  | 'delivery_running'
+  | 'delivered'
+  | 'delivery_failed'
 
 export interface Stage {
   key: string
@@ -89,6 +99,7 @@ export interface CommandResult {
   command?: string
   output?: string
   result?: string
+  status?: string
   summary: CompatibilityCheck[]
 }
 
@@ -105,6 +116,9 @@ export interface Incident {
   fingerprint?: string
   category?: string
   summary?: string
+  requestPayload?: any
+  responsePayload?: any
+  payload?: any
 }
 
 export interface RepositoryFileEntry {
@@ -187,6 +201,8 @@ export interface Patch {
   commitMessage?: string
   generatedBy?: string
   reason?: string
+  description?: string
+  risk?: string
   affectedFiles: string[]
   file?: string
   status?: string
@@ -210,6 +226,7 @@ export interface ReplaySide {
 export interface Replay {
   original?: ReplaySide
   patched?: ReplaySide
+  matchPercentage?: number
   behaviorChanged?: boolean
   summary?: string
 }
@@ -250,6 +267,119 @@ export interface MemoryUpdate {
   deliveryReference?: string
 }
 
+export interface FailureDNA {
+  id?: string
+  fingerprint: string
+  trigger?: string
+  request?: {
+    method?: string
+    endpoint?: string
+    http_status?: number
+  }
+  exception?: {
+    class?: string
+    normalized_message?: string
+  }
+  propagation_chain?: Array<{
+    service: string
+    duration_ms?: number
+    status?: string
+    error?: string
+  }>
+  failure_point?: string
+  dependency?: string
+  recurrence_count?: number
+  resolved_count?: number
+  environment?: string
+  created_at?: string
+}
+
+export interface RepairEvaluation {
+  safety: string
+  build: string
+  tests: string
+  replay: string
+  semantic_risk: string
+  blast_radius_risk: string
+  final_status: string
+  rejection_reason?: string
+}
+
+export interface RepairCandidate {
+  id: string
+  label: string
+  description: string
+  diff: string
+  assumptions?: string[]
+  expected_behavior?: string
+  is_recommended: boolean
+  evaluation?: RepairEvaluation
+}
+
+export interface ImpactCaller {
+  caller: string
+  file?: string
+  line?: number
+  depth?: number
+}
+
+export interface ImpactAnalysis {
+  id?: string
+  risk_level: 'LOW' | 'MEDIUM' | 'HIGH'
+  metrics: {
+    files_affected: number
+    callers_affected: number
+    endpoints_affected: number
+    tests_affected: number
+    unknown_dependencies: number
+  }
+  changed_files: string[]
+  changed_symbols: Array<{ symbol: string; kind?: string; file?: string }>
+  affected_callers: ImpactCaller[]
+  affected_modules: string[]
+  affected_services: string[]
+  affected_endpoints: string[]
+  affected_tests: string[]
+  affected_dependencies: string[]
+}
+
+export interface RegressionGuardEntry {
+  id: string
+  test_name: string
+  test_path: string
+  validation_status: string
+  is_active: boolean
+  created_at?: string
+}
+
+export interface ImmunizationStatus {
+  fingerprint: string
+  is_immunized: boolean
+  status: string
+  active_guards_count: number
+  guards: RegressionGuardEntry[]
+  regression_suite_coverage: string
+  last_validated_at?: string
+}
+
+export interface FailureCapsuleInfo {
+  available: boolean
+  version?: string
+  id?: string
+  size_bytes?: number
+}
+
+export interface FailureScenario {
+  id?: string
+  scenario_id: string
+  name: string
+  category: string
+  description?: string
+  failure_signature: Record<string, any>
+  expected_trace: Array<{ service: string; duration: string; status: string }>
+  expected_root_cause?: string
+}
+
 export interface Run {
   runId: string
   status: RunStatus
@@ -269,6 +399,7 @@ export interface Run {
   repositoryUrl?: string
   startedAt?: string
   completedAt?: string
+  durationMs?: number
   repository?: Repository
   incident?: Incident
   stages: Stage[]
@@ -282,4 +413,9 @@ export interface Run {
   validation?: Validation
   delivery?: Delivery
   memoryUpdate?: MemoryUpdate
+  failureDna?: FailureDNA
+  repairCandidates?: RepairCandidate[]
+  impactAnalysis?: ImpactAnalysis
+  immunization?: ImmunizationStatus
+  capsule?: FailureCapsuleInfo
 }

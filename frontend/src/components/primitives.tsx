@@ -72,7 +72,7 @@ export function PanelHeading({
           </span>
         ) : null}
         <div>
-          <h3 className="font-display text-xl font-bold tracking-tight sm:text-2xl">{title}</h3>
+          <h2 className="font-display text-xl font-bold tracking-tight sm:text-2xl">{title}</h2>
           {caption ? <p className="mt-1 max-w-xl text-sm text-ink-300">{caption}</p> : null}
         </div>
       </div>

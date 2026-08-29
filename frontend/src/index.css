@@ -2,13 +2,61 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --ide-bg: #070A0B;
+  --ide-panel: #0F1518;
+  --ide-border: rgba(255, 255, 255, 0.08);
+  --ide-text: #FFFFFF;
+  --ide-text-muted: #A1A1AA;
+}
+
+.theme-light {
+  --ide-bg: #F4F6F8;
+  --ide-panel: #FFFFFF;
+  --ide-border: rgba(0, 0, 0, 0.12);
+  --ide-text: #0F172A;
+  --ide-text-muted: #64748B;
+}
+
+.theme-light body {
+  background-color: #F4F6F8;
+  color: #0F172A;
+}
+
+.theme-light .text-white {
+  color: #0F172A;
+}
+
+.theme-light .text-zinc-100,
+.theme-light .text-zinc-200,
+.theme-light .text-zinc-300 {
+  color: #334155;
+}
+
+.theme-light .text-zinc-400,
+.theme-light .text-zinc-500 {
+  color: #64748B;
+}
+
+.theme-light .bg-ide-base {
+  background-color: #F4F6F8;
+}
+
+.theme-light .bg-ide-panel {
+  background-color: #FFFFFF;
+}
+
+.theme-light .border-ide-divider {
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
 @layer base {
   html {
     scroll-behavior: smooth;
   }
 
   body {
-    @apply bg-ink-900 text-white font-sans antialiased;
+    @apply bg-ide-base text-white font-sans antialiased;
   }
 
   /* Neon circuit cursor set. Hotspots match the artwork in public/cursors. */
