@@ -299,7 +299,22 @@ export function AutoFixAgentPanel({
 
 
   let config: StageAgentConfig
-  if (run?.status === 'baseline_failure_not_reproduced') {
+  if (run?.status === 'no_failure_evidence' || run?.status === 'no_failure_found') {
+    config = {
+      action: 'Analysis Complete · No Failure Detected',
+      analysis: 'Repository inspected cleanly. No reproducible application defect detected. Automated repair is not required.',
+      command: '$ scan_repository --all',
+      output: 'All source files and configuration analyzed.\n0 active failures detected.',
+      finding: {
+        title: 'Repository is healthy.',
+        detail: 'No unhandled runtime exception or active defect found.',
+      },
+      nextAction: {
+        title: 'Analysis complete',
+        estimatedTime: 'Done',
+      },
+    }
+  } else if (run?.status === 'baseline_failure_not_reproduced') {
     config = STAGE_AGENT_MAP['baseline_failure_not_reproduced']
   } else if (run?.status === 'completed') {
     config = STAGE_AGENT_MAP['17_memory_update']

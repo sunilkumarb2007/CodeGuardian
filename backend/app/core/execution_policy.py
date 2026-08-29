@@ -7,12 +7,12 @@ class ExecutionPolicy:
     COMMAND_TIMEOUT_GIT = 60
     
     # Absolute deadline for the total investigation phase across all retries
-    AI_TOTAL_DEADLINE = 600
+    AI_TOTAL_DEADLINE = 180
     
-    MAX_ATTEMPTS = 3
-    STAGE_TIMEOUT = 300
-    AI_REQUEST_TIMEOUT = 480
-    HEARTBEAT_INTERVAL = 20
+    MAX_ATTEMPTS = 2
+    STAGE_TIMEOUT = 180
+    AI_REQUEST_TIMEOUT = 120
+    HEARTBEAT_INTERVAL = 10
     
     # TTL for run-level mutual exclusion locks
     LOCK_TTL = 900
