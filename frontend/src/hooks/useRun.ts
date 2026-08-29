@@ -95,7 +95,6 @@ export function useRun(runId: string | undefined): UseRunResult {
       }
 
       ws.onerror = () => {
-        // Fallback to initial HTTP load if WS fails
         void load()
       }
       
@@ -106,7 +105,20 @@ export function useRun(runId: string | undefined): UseRunResult {
       void load()
     }
 
+    // Always run an active HTTP poll interval so UI receives updates even if WS is dropped
+    void load()
+    let active = true
+    const interval = setInterval(async () => {
+      if (!active) return
+      const next = await load()
+      if (next && isTerminal(next)) {
+        clearInterval(interval)
+      }
+    }, 2500)
+
     return () => {
+      active = false
+      clearInterval(interval)
       ws?.close()
     }
   }, [runId, load])
