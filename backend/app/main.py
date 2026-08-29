@@ -9,7 +9,7 @@ import logging
 
 from app.core.config import settings
 from app.core.logging import setup_logging
-from app.api.routes import health, incidents, orchestration, runs, system, failure_lab, capsules, extension
+from app.api.routes import health, incidents, orchestration, runs, system, failure_lab, capsules, extension, repository_intelligence, config_guardian, companion, notifications, approval
 from app.db.database import engine, Base, get_db
 from contextlib import asynccontextmanager
 
@@ -78,3 +78,9 @@ app.include_router(orchestration.router, prefix="/api/orchestration", tags=["Orc
 app.include_router(failure_lab.router, prefix="/api/failure-lab", tags=["FailureLab"])
 app.include_router(capsules.router, prefix="/api", tags=["Capsules"])
 app.include_router(extension.router, prefix="/api", tags=["Extension"])
+app.include_router(repository_intelligence.router, tags=["Repository Intelligence"])
+app.include_router(config_guardian.router, tags=["Configuration Guardian"])
+app.include_router(companion.router, tags=["Companion"])
+app.include_router(notifications.router, tags=["Notifications"])
+app.include_router(approval.router, tags=["Approval Center"])
+

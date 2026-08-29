@@ -694,3 +694,66 @@ class FailureScenario(Base):
     expected_root_cause = Column(Text, nullable=True)
     created_at = Column(TIMESTAMP, nullable=False)
 
+
+class RepositoryIntelligence(Base):
+    __tablename__ = 'repository_intelligences'
+
+    id = Column(GUID, primary_key=True, default=uuid.uuid4, nullable=False)
+    repository_id = Column(GUID, ForeignKey('repositories.id'), nullable=True)
+    commit_sha = Column(String(100), nullable=True, index=True)
+    architecture_type = Column(String(50), nullable=False, default='SINGLE_APPLICATION')  # MONOREPO, MICROSERVICES, SINGLE_APPLICATION, MODULAR_MONOLITH
+    services_inventory = Column(JSONType, nullable=False, default=list)
+    service_graph = Column(JSONType, nullable=False, default=dict)
+    dependency_graph = Column(JSONType, nullable=False, default=dict)
+    symbol_index = Column(JSONType, nullable=False, default=dict)
+    endpoint_index = Column(JSONType, nullable=False, default=list)
+    config_manifest = Column(JSONType, nullable=False, default=list)
+    created_at = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
+    updated_at = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
+
+
+class ConfigurationDrift(Base):
+    __tablename__ = 'configuration_drifts'
+
+    id = Column(GUID, primary_key=True, default=uuid.uuid4, nullable=False)
+    run_id = Column(GUID, ForeignKey('runs.id'), nullable=True, index=True)
+    service_name = Column(String(100), nullable=False)
+    key_name = Column(String(255), nullable=False)
+    source_file = Column(String(255), nullable=True)
+    environment = Column(String(50), nullable=False, default='production')
+    desired_state = Column(String(255), nullable=False)  # e.g., PRESENT, NON_EMPTY
+    observed_state = Column(String(255), nullable=False)  # e.g., MISSING, DRIFTED
+    status = Column(String(40), nullable=False)  # MISSING, DRIFT, INCOMPATIBLE, VERIFIED
+    recovery_proposal = Column(Text, nullable=True)
+    is_recovered = Column(Boolean, nullable=False, default=False)
+    created_at = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
+
+
+class ApprovalDecision(Base):
+    __tablename__ = 'approval_decisions'
+
+    id = Column(GUID, primary_key=True, default=uuid.uuid4, nullable=False)
+    run_id = Column(GUID, ForeignKey('runs.id'), nullable=False, index=True)
+    actor = Column(String(100), nullable=False)
+    decision = Column(String(40), nullable=False)  # APPROVED_FOR_PR, APPROVED_FOR_MERGE, REJECTED
+    policy_evaluation = Column(JSONType, nullable=False, default=dict)
+    risk_level = Column(String(30), nullable=False, default='LOW')
+    auto_merge_eligible = Column(Boolean, nullable=False, default=False)
+    auto_merge_reason = Column(Text, nullable=True)
+    comments = Column(Text, nullable=True)
+    created_at = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
+
+
+class NotificationItem(Base):
+    __tablename__ = 'notification_items'
+
+    id = Column(GUID, primary_key=True, default=uuid.uuid4, nullable=False)
+    run_id = Column(GUID, ForeignKey('runs.id'), nullable=True, index=True)
+    notification_type = Column(String(50), nullable=False)  # APPROVAL_REQUIRED, VALIDATION_PASSED, PR_CREATED, MERGE_READY, REPAIR_FAILED
+    title = Column(String(255), nullable=False)
+    message = Column(Text, nullable=False)
+    action_url = Column(String(255), nullable=True)
+    is_read = Column(Boolean, nullable=False, default=False)
+    created_at = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
+
+
