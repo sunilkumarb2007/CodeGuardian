@@ -132,8 +132,9 @@ class WorkspaceService:
             current_idx = len(STAGES_CONFIG)
         
         # terminal failure check
-        is_failed = run.state in [
-            RunState.REPOSITORY_NOT_FOUND, RunState.NO_FAILURE_EVIDENCE,
+        is_no_failure = run.state in [RunState.NO_FAILURE_EVIDENCE, "NO_FAILURE_EVIDENCE", "NO_FAILURE_FOUND"]
+        is_failed = not is_no_failure and run.state in [
+            RunState.REPOSITORY_NOT_FOUND,
             RunState.INVESTIGATION_FAILED, RunState.INVESTIGATION_TIMEOUT, RunState.INVESTIGATION_SCHEMA_ERROR,
             RunState.PATCH_GENERATION_FAILED, RunState.PATCH_CONTEXT_INVALID, RunState.PATCH_PATH_UNSAFE,
             RunState.PATCH_LANGUAGE_MISMATCH, RunState.PATCH_APPLY_FAILED,
@@ -144,7 +145,12 @@ class WorkspaceService:
 
         stages = {}
         for i, (stage, _) in enumerate(STAGES_CONFIG):
-            if is_failed:
+            if is_no_failure:
+                if i <= current_idx:
+                    stages[stage] = "passed"
+                else:
+                    stages[stage] = "not_required"
+            elif is_failed:
                 if stage == current_ui_stage:
                     stages[stage] = "failed"
                 elif i < current_idx:
