@@ -334,7 +334,7 @@ class DeliveryService:
         if res.status == "DELIVERY_AUTH_REQUIRED":
             incident.status = "failed"
         elif res.status in ("pr_created", "pr_merged"):
-            incident.status = res.status
+            incident.status = "pr_created"
             patch.status = "pushed"
         else:
             incident.status = "failed"
