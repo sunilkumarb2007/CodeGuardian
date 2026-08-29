@@ -141,57 +141,74 @@ class CodeGuardianOrchestrator:
             
                 # 2. Failure Detection
                 emit_event("STATUS", "Searching failure evidence")
-            
-                with SessionLocal() as db:
-                    fec = FailureEvidenceCollector(db)
-                    
-                    failure_input = None
-                    if failure_input_dict:
-                        from app.schemas.failure import FailureInput
-                        # Assign required DB fields
-                        fi_data = dict(failure_input_dict)
-                        fi_data['repository_id'] = repo_id
-                        fi_data['run_id'] = str(run_id)
-                        if not fi_data.get('source'):
-                            fi_data['source'] = 'RUNTIME'
-                        if not fi_data.get('timestamp'):
-                            fi_data['timestamp'] = datetime.now(timezone.utc)
-                        elif isinstance(fi_data['timestamp'], str):
-                            try:
-                                fi_data['timestamp'] = datetime.fromisoformat(fi_data['timestamp'].replace('Z', '+00:00'))
-                            except Exception:
-                                fi_data['timestamp'] = datetime.now(timezone.utc)
 
-                        # Filter to fields declared in FailureInput model
-                        model_fields = FailureInput.model_fields.keys()
-                        filtered_fi = {k: v for k, v in fi_data.items() if k in model_fields}
-                        failure_input = FailureInput(**filtered_fi)
+                # AUTO-INGESTION PATH: incident already created by /api/incidents/ingest
+                # Skip FailureEvidenceCollector to avoid duplicate incident creation.
+                if supplied_incident_id:
+                    incident_id = supplied_incident_id
+                    # Ensure the run is linked to the pre-created incident
+                    with SessionLocal() as db:
+                        run = db.query(Run).filter(Run.id == run_id).first()
+                        if run and not run.incident_id:
+                            run.incident_id = uuid.UUID(incident_id)
+                            db.commit()
+                    emit_event("ANALYSIS", "Failure evidence received from automatic incident ingestion")
+                    machine.transition_to(RunState.FAILURE_DETECTED)
+                    update_run_state(RunState.FAILURE_DETECTED)
+                    machine.transition_to(RunState.EVIDENCE_COLLECTED)
+                    update_run_state(RunState.EVIDENCE_COLLECTED)
+                else:
+                    # MANUAL PATH: collect evidence through the standard flow
+                    with SessionLocal() as db:
+                        fec = FailureEvidenceCollector(db)
                         
-                    result = fec.collect_evidence(repository_url, repo_id, failure_input)
-                    db.commit()
-            
-                if result == "NO_FAILURE_EVIDENCE" or result == "NO_PREPARED_FAILURE":
-                    emit_event("STATUS", "No failure evidence detected for this repository")
-                    machine.transition_to(RunState.NO_FAILURE_EVIDENCE)
-                    update_run_state(RunState.NO_FAILURE_EVIDENCE, "NO_EVIDENCE", "No failure evidence detected for this repository")
-                    return
-                elif result == "FAILURE_FIXTURE_CONTEXT_MISMATCH":
-                    emit_event("STATUS", "Failure fixture context mismatch. Expected files missing.")
-                    raise ValueError("FAILURE_FIXTURE_CONTEXT_MISMATCH")
-                
-                incident_id = result
-                with SessionLocal() as db:
-                    run = db.query(Run).filter(Run.id == run_id).first()
-                    if run:
-                        run.incident_id = uuid.UUID(incident_id)
+                        failure_input = None
+                        if failure_input_dict:
+                            from app.schemas.failure import FailureInput
+                            # Assign required DB fields
+                            fi_data = dict(failure_input_dict)
+                            fi_data['repository_id'] = repo_id
+                            fi_data['run_id'] = str(run_id)
+                            if not fi_data.get('source'):
+                                fi_data['source'] = 'RUNTIME'
+                            if not fi_data.get('timestamp'):
+                                fi_data['timestamp'] = datetime.now(timezone.utc)
+                            elif isinstance(fi_data['timestamp'], str):
+                                try:
+                                    fi_data['timestamp'] = datetime.fromisoformat(fi_data['timestamp'].replace('Z', '+00:00'))
+                                except Exception:
+                                    fi_data['timestamp'] = datetime.now(timezone.utc)
+
+                            # Filter to fields declared in FailureInput model
+                            model_fields = FailureInput.model_fields.keys()
+                            filtered_fi = {k: v for k, v in fi_data.items() if k in model_fields}
+                            failure_input = FailureInput(**filtered_fi)
+                            
+                        result = fec.collect_evidence(repository_url, repo_id, failure_input)
                         db.commit()
                 
-                machine.transition_to(RunState.FAILURE_DETECTED)
-                update_run_state(RunState.FAILURE_DETECTED)
-                emit_event("ANALYSIS", "Failure evidence identified")
-            
-                machine.transition_to(RunState.EVIDENCE_COLLECTED)
-                update_run_state(RunState.EVIDENCE_COLLECTED)
+                    if result == "NO_FAILURE_EVIDENCE" or result == "NO_PREPARED_FAILURE":
+                        emit_event("STATUS", "No failure evidence detected for this repository")
+                        machine.transition_to(RunState.NO_FAILURE_EVIDENCE)
+                        update_run_state(RunState.NO_FAILURE_EVIDENCE, "NO_EVIDENCE", "No failure evidence detected for this repository")
+                        return
+                    elif result == "FAILURE_FIXTURE_CONTEXT_MISMATCH":
+                        emit_event("STATUS", "Failure fixture context mismatch. Expected files missing.")
+                        raise ValueError("FAILURE_FIXTURE_CONTEXT_MISMATCH")
+                    
+                    incident_id = result
+                    with SessionLocal() as db:
+                        run = db.query(Run).filter(Run.id == run_id).first()
+                        if run:
+                            run.incident_id = uuid.UUID(incident_id)
+                            db.commit()
+                    
+                    machine.transition_to(RunState.FAILURE_DETECTED)
+                    update_run_state(RunState.FAILURE_DETECTED)
+                    emit_event("ANALYSIS", "Failure evidence identified")
+                
+                    machine.transition_to(RunState.EVIDENCE_COLLECTED)
+                    update_run_state(RunState.EVIDENCE_COLLECTED)
             
                 # 3. GhostTrace
                 emit_event("STATUS", "Following repository call chain")

@@ -4,7 +4,7 @@ from uuid import UUID
 from typing import List
 
 from app.db.database import get_db
-from app.schemas.incident import IncidentResponse, IncidentDetailResponse
+from app.schemas.incident import IncidentResponse, IncidentDetailResponse, IncidentIngestRequest, IncidentIngestResponse
 from app.schemas.evidence import EvidenceResponse
 from app.schemas.trace import GhostTraceResponse
 from app.schemas.memory import MemorySearchResponse
@@ -12,7 +12,7 @@ from app.schemas.investigation import InvestigationResult
 from app.schemas.replay import ReplayResponse
 from app.schemas.validation import ValidationRunResponse
 from app.schemas.github import PullRequestDeliveryResponse
-from app.schemas.github import PullRequestDeliveryResponse
+from fastapi import BackgroundTasks
 
 from app.services.incident_service import IncidentService
 from app.services.evidence_service import EvidenceService
@@ -21,6 +21,12 @@ from app.services.memory_service import MemoryService
 from app.services.investigation_service import InvestigationService
 
 router = APIRouter()
+
+@router.post("/ingest", response_model=IncidentIngestResponse, status_code=202)
+def ingest_incident(request: IncidentIngestRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    service = IncidentService(db)
+    result = service.ingest_incident(request, background_tasks)
+    return result
 
 @router.get("", response_model=List[IncidentResponse])
 def get_incidents(db: Session = Depends(get_db)):

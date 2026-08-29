@@ -1,7 +1,31 @@
-from pydantic import BaseModel, ConfigDict
-from typing import Optional, List
+from pydantic import BaseModel, ConfigDict, Field
+from typing import Optional, List, Dict, Any
 from uuid import UUID
 from datetime import datetime
+
+class IncidentIngestRequest(BaseModel):
+    repository: str
+    repository_id: Optional[UUID] = None
+    branch: Optional[str] = "main"
+    commit_sha: Optional[str] = None
+    environment: Optional[str] = "production"
+    service: Optional[str] = None
+    endpoint: Optional[str] = None
+    status_code: Optional[int] = None
+    request_id: Optional[str] = None
+    trace_id: Optional[str] = None
+    exception: Optional[str] = None
+    message: Optional[str] = None
+    stack_trace: Optional[str] = None
+    timestamp: Optional[datetime] = None
+    source: Optional[str] = "webhook"
+    metadata: Optional[Dict[str, Any]] = None
+
+class IncidentIngestResponse(BaseModel):
+    incident_id: UUID
+    run_id: UUID
+    status: str
+    message: str
 
 class IncidentResponse(BaseModel):
     id: UUID
