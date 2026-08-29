@@ -55,9 +55,6 @@ class SarvamInvestigator(InvestigatorProvider):
                     )
                 }
             ],
-            "response_format": {
-                "type": "json_object"
-            },
             "temperature": 0.0,
             "max_tokens": 4096
         }
@@ -227,7 +224,6 @@ class SarvamInvestigator(InvestigatorProvider):
                                         )
                                     }
                                 ],
-                                "response_format": {"type": "json_object"},
                                 "temperature": 0.0,
                                 "max_tokens": 4096
                             }
@@ -236,10 +232,24 @@ class SarvamInvestigator(InvestigatorProvider):
                                 rec_data = rec_resp.json()
                                 rec_choice = rec_data.get("choices", [{}])[0]
                                 rec_content = rec_choice.get("message", {}).get("content")
+                                rec_reasoning = rec_choice.get("message", {}).get("reasoning_content")
                                 rec_finish = rec_choice.get("finish_reason")
-                                if rec_content and rec_finish != "length":
+                                if not rec_content and rec_reasoning:
+                                    start_b = rec_reasoning.find("{")
+                                    end_b = rec_reasoning.rfind("}")
+                                    if start_b != -1 and end_b > start_b:
+                                        rec_content = rec_reasoning[start_b:end_b + 1]
+                                if rec_content:
                                     try:
-                                        rec_result = InvestigationResult.model_validate_json(rec_content.strip())
+                                        rec_clean = rec_content.strip()
+                                        if rec_clean.startswith("```json"):
+                                            rec_clean = rec_clean[7:]
+                                        if rec_clean.startswith("```"):
+                                            rec_clean = rec_clean[3:]
+                                        if rec_clean.endswith("```"):
+                                            rec_clean = rec_clean[:-3]
+                                        rec_clean = rec_clean.strip()
+                                        rec_result = InvestigationResult.model_validate_json(rec_clean)
                                         if rec_result.patch_candidate and _validate_diff_completeness(rec_result.patch_candidate.diff):
                                             logger.info("SARVAM_TRUNCATION_RECOVERY_SUCCESS: Recovered valid InvestigationResult via compact schema.")
                                             return rec_result

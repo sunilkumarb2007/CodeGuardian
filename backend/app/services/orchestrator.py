@@ -152,6 +152,21 @@ class CodeGuardianOrchestrator:
                         if run and not run.incident_id:
                             run.incident_id = uuid.UUID(incident_id)
                             db.commit()
+                        inc_obj = db.query(Incident).filter(Incident.id == uuid.UUID(incident_id)).first()
+                        # If incident has no error evidence, terminate cleanly as NO_FAILURE_EVIDENCE
+                        evidence_events = db.query(EvidenceEvent).filter(EvidenceEvent.incident_id == uuid.UUID(incident_id)).all()
+                        has_failure = bool(
+                            (inc_obj and inc_obj.observed_status_code and inc_obj.observed_status_code >= 400) or
+                            any(bool(e.stack_trace) for e in evidence_events) or
+                            (inc_obj and any(kw in (inc_obj.title or "").lower() for kw in ("exception", "error", "fail", "crash")))
+                        )
+                        if not has_failure:
+                            emit_event("STATUS", "No failure evidence detected for this repository")
+                            emit_event("ANALYSIS", "Analysis complete: 0 defects detected. Terminating successfully.")
+                            machine.transition_to(RunState.NO_FAILURE_EVIDENCE)
+                            update_run_state(RunState.NO_FAILURE_EVIDENCE, "NO_EVIDENCE", "No failure evidence detected for this repository")
+                            return
+
                     emit_event("ANALYSIS", "Failure evidence received from automatic incident ingestion")
                     machine.transition_to(RunState.FAILURE_DETECTED)
                     update_run_state(RunState.FAILURE_DETECTED)
@@ -294,7 +309,7 @@ class CodeGuardianOrchestrator:
                         elif inv_result.status in ("AI_TIMEOUT", "timeout"):
                             emit_event("STATUS", "Stage 8 FAILED: Total AI deadline exceeded")
                             machine.force_fail(RunState.INVESTIGATION_TIMEOUT, "Total AI deadline exceeded")
-                            update_run_state(RunState.INVESTIGATION_TIMEOUT, error_code="AI_TIMEOUT", error_msg="Total AI deadline exceeded")
+                            update_run_state(RunState.INVESTIGATION_TIMEOUT, error_code="TIMEOUT", error_msg="Total AI deadline exceeded")
                             return
                         elif inv_result.status in ("AI_SCHEMA_ERROR", "INVESTIGATION_SCHEMA_ERROR") or "schema" in inv_result.status.lower():
                             prior_failure_evidence.append({

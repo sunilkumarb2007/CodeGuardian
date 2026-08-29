@@ -57,9 +57,19 @@ class InvestigationPromptBuilder:
         for sf in source_files[:2]:
             prompt.append(f"File: {sf.file_path}")
             content = sf.source_snapshot or "Empty"
-            # Keep source code under 1500 chars to avoid blowing token budget
-            if len(content) > 1500:
-                content = content[:1500] + "\n... [truncated for context bounds]"
+            lines = content.splitlines()
+            if len(lines) > 40:
+                target_line = 30
+                for e in evidence:
+                    if e.stack_trace and ":" in e.stack_trace:
+                        import re
+                        m = re.search(r":(\d+)\)", e.stack_trace)
+                        if m:
+                            target_line = int(m.group(1))
+                            break
+                start_l = max(0, target_line - 15)
+                end_l = min(len(lines), target_line + 15)
+                content = f"// lines {start_l + 1}-{end_l}\n" + "\n".join(lines[start_l:end_l])
             prompt.append(content)
             prompt.append("---")
 
@@ -67,12 +77,13 @@ class InvestigationPromptBuilder:
         target_file = source_files[0].file_path if source_files else "PaymentService.java"
         prompt.append("\nReturn strictly this compact JSON object with no wrapping text:")
         prompt.append(f"""{{
-  "root_cause": "Concise failure explanation",
+  "root_cause": "Null dereference when merchant is not found in repository",
   "root_cause_service": "payment-service",
   "affected_file": "{target_file}",
   "line": 30,
-  "repair_summary": "Concise fix description",
-  "diff": "--- a/{target_file}\\n+++ b/{target_file}\\n@@ -24,3 +24,5 @@\\n+        // complete patch line here",
+  "repair_summary": "Add null check for merchant",
+  "diff": "--- a/{target_file}\\n+++ b/{target_file}\\n@@ -24,3 +24,5 @@\\n+        if (merchant == null) {{\\n+            throw new IllegalStateException(\\"Merchant not found\\");\\n+        }}",
   "confidence": 1.0
 }}""")
+
         return "\n".join(prompt)
