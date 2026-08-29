@@ -460,7 +460,7 @@ export default function Landing() {
                     <span className="h-2.5 w-2.5 rounded-full bg-red-500/80" />
                     <span className="h-2.5 w-2.5 rounded-full bg-amber-500/80" />
                     <span className="h-2.5 w-2.5 rounded-full bg-lime/80" />
-                    <span className="ml-2 text-zinc-300 font-semibold">JavaAPICheck / payment-service</span>
+                    <span className="ml-2 text-zinc-300 font-semibold">production-service / api-cluster</span>
                   </div>
                   <span className="px-2 py-0.5 rounded bg-red-500/20 text-red-400 font-bold border border-red-500/30">
                     HTTP 500 CRASH REPRODUCED
