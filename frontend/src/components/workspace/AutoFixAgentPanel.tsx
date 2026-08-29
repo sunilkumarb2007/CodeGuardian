@@ -546,7 +546,11 @@ export function AutoFixAgentPanel({
             <div>
               <p className="text-xs font-semibold text-white">{config.nextAction.title}</p>
               <p className="text-[10px] font-mono text-zinc-300">
-                {isTerminalRun ? 'Status: Completed' : `Estimated time: ${config.nextAction.estimatedTime}`}
+                {isTerminalRun
+                  ? (run?.status === 'completed' || run?.status === 'no_failure_evidence' || run?.status === 'no_failure_found'
+                    ? 'Status: Completed'
+                    : 'Status: Failed')
+                  : `Estimated time: ${config.nextAction.estimatedTime}`}
               </p>
             </div>
             <button

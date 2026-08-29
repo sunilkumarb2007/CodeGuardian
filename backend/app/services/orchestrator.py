@@ -436,8 +436,9 @@ class CodeGuardianOrchestrator:
             
                 if not validated:
                     machine.transition_to(RunState.REPAIR_EXHAUSTED)
-                    update_run_state(RunState.REPAIR_EXHAUSTED)
-                    emit_event("STATUS", f"REPAIR_EXHAUSTED after {max_attempts} attempts. Last error: {prior_failure_evidence[-1].get('error', 'unknown') if prior_failure_evidence else 'unknown'}")
+                    last_err = prior_failure_evidence[-1].get('error', 'Validation bounds exceeded without viable patch candidate') if prior_failure_evidence else 'Validation bounds exceeded without viable patch candidate'
+                    update_run_state(RunState.REPAIR_EXHAUSTED, error_code="REPAIR_EXHAUSTED", error_msg=f"Repair exhausted: {last_err}")
+                    emit_event("STATUS", f"REPAIR_EXHAUSTED after {max_attempts} attempts. Last error: {last_err}")
                     return
                 
                 machine.transition_to(RunState.WAITING_FOR_APPROVAL)
