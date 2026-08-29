@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { FailureCapsuleInfo } from '../../api/types'
+import { API_BASE_URL } from '../../api/client'
 
 export function CapsulePanel({
   runId,
@@ -12,7 +13,7 @@ export function CapsulePanel({
   const [importStatus, setImportStatus] = useState<string | null>(null)
 
   const handleDownload = () => {
-    window.open(`/api/runs/${runId}/capsule`, '_blank')
+    window.open(`${API_BASE_URL}/api/runs/${runId}/capsule`, '_blank')
   }
 
   const handleCopyId = () => {
@@ -28,7 +29,7 @@ export function CapsulePanel({
     setImportStatus('Validating archive integrity and manifest...')
     try {
       const buf = await file.arrayBuffer()
-      const res = await fetch('/api/capsules/import', {
+      const res = await fetch(`${API_BASE_URL}/api/capsules/import`, {
         method: 'POST',
         body: buf,
         headers: {

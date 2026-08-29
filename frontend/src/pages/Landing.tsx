@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion, useScroll, useTransform } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
-import { ApiError, startRun } from '../api/client'
+import { ApiError, startRun, API_BASE_URL } from '../api/client'
 import { asRecord, readString } from '../api/json'
 import { Footer, LogoMark, Shell } from '../components/Layout'
 import { Eyebrow, Reveal } from '../components/primitives'
@@ -484,7 +484,7 @@ export default function Landing() {
                 </div>
                 <div className="flex items-center gap-3 pt-2">
                   <a
-                    href="http://localhost:8000/api/extension/download"
+                    href={`${API_BASE_URL}/api/extension/download`}
                     target="_blank"
                     rel="noreferrer"
                     className="px-4 py-2 rounded-lg bg-lime text-ink-900 font-bold text-xs hover:bg-lime/90 transition-colors inline-block"
