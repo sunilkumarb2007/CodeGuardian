@@ -1,6 +1,6 @@
 import { readString, asRecord } from './json'
 
-const RAW_BASE = import.meta.env.VITE_API_BASE_URL ?? ''
+const RAW_BASE = import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? 'https://codeguardian-api-vwmb.onrender.com' : '')
 export const API_BASE_URL = RAW_BASE.replace(/\/+$/, '')
 
 export class ApiError extends Error {
@@ -53,7 +53,18 @@ async function request(path: string, init?: RequestInit): Promise<unknown> {
     )
   }
 
+  const contentType = response.headers.get('content-type') || ''
   const text = await response.text()
+
+  if (contentType.includes('text/html') || text.trim().startsWith('<!doctype html') || text.trim().startsWith('<html')) {
+    throw new ApiError(
+      `Received HTML page instead of API response from ${API_BASE_URL || window.location.origin}. Check backend API URL configuration.`,
+      response.status === 200 ? 502 : response.status,
+      'Invalid Backend Response',
+      'HTML received instead of JSON',
+    )
+  }
+
   const payload: unknown = text ? safeParse(text) : undefined
 
   if (!response.ok) {
@@ -89,15 +100,41 @@ async function request(path: string, init?: RequestInit): Promise<unknown> {
 
 export const codeGuardianApi = {
   /** 1. Create / Start investigation run */
-  startRun(repositoryUrl: string, suppliedIncidentId?: string, failureInput?: Record<string, unknown>): Promise<{ run_id: string; status: string }> {
-    return request('/api/orchestration/run', {
-      method: 'POST',
-      body: JSON.stringify({
-        repository_url: repositoryUrl,
-        supplied_incident_id: suppliedIncidentId,
-        failure_input: failureInput,
-      }),
-    }) as Promise<{ run_id: string; status: string }>
+  async startRun(
+    repositoryUrl: string,
+    suppliedIncidentId?: string,
+    failureInput?: Record<string, unknown>,
+  ): Promise<{ run_id: string; status: string }> {
+    try {
+      const res = (await request('/api/orchestration/run', {
+        method: 'POST',
+        body: JSON.stringify({
+          repository_url: repositoryUrl,
+          supplied_incident_id: suppliedIncidentId,
+          failure_input: failureInput,
+        }),
+      })) as Record<string, unknown>
+      const id = readString(asRecord(res), 'run_id', 'runId', 'id')
+      if (id) {
+        return { run_id: id, status: String(res.status || 'started') }
+      }
+    } catch (err) {
+      if (err instanceof ApiError && (err.status === 404 || err.status === 405)) {
+        const ingestRes = (await request('/api/incidents/ingest', {
+          method: 'POST',
+          body: JSON.stringify({
+            repository: repositoryUrl,
+            ...(failureInput || {}),
+          }),
+        })) as Record<string, unknown>
+        const id = readString(asRecord(ingestRes), 'run_id', 'runId', 'id')
+        if (id) {
+          return { run_id: id, status: String(ingestRes.status || 'ACCEPTED') }
+        }
+      }
+      throw err
+    }
+    throw new ApiError('The backend accepted the request but did not return a valid run ID.', 500, 'Invalid response', 'Missing run_id')
   },
 
   /** 2. Get single run state (authoritative status and stage map) */
@@ -174,9 +211,58 @@ export const codeGuardianApi = {
   exportCapsule(runId: string): string {
     return `${API_BASE_URL}/api/capsules/${encodeURIComponent(runId)}/export`
   },
+  /** 16. Search repository, memory, incidents, symbols, endpoints, etc. */
+  search(query: string, type: string = 'all', repositoryId?: string): Promise<any[]> {
+    const params = new URLSearchParams()
+    params.append('q', query)
+    params.append('type', type)
+    if (repositoryId) {
+      params.append('repository_id', repositoryId)
+    }
+    return request(`/api/search?${params.toString()}`) as Promise<any[]>
+  },
+
+  /** 17. Repository connections */
+  connectRepository(data: {
+    owner: string
+    name: string
+    repository_url: string
+    default_branch?: string
+    monitoring_enabled?: boolean
+    automatic_investigation_enabled?: boolean
+    auto_pr_enabled?: boolean
+    approval_policy?: string
+    notification_policy?: Record<string, unknown>
+  }): Promise<unknown> {
+    return request('/api/repositories/connect', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  listConnectedRepositories(): Promise<any[]> {
+    return request('/api/repositories/connections') as Promise<any[]>
+  },
+
+  updateRepositoryConnection(repositoryId: string, updates: Record<string, unknown>): Promise<unknown> {
+    return request(`/api/repositories/${encodeURIComponent(repositoryId)}/connection`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    })
+  },
+
+  /** 18. Notifications */
+  getNotifications(unreadOnly: boolean = false): Promise<{ notifications: any[]; unread_count: number }> {
+    return request(`/api/notifications?unread_only=${unreadOnly}`) as Promise<{ notifications: any[]; unread_count: number }>
+  },
+
+  markNotificationAsRead(id: string): Promise<{ success: boolean; unread_count: number }> {
+    return request(`/api/notifications/${encodeURIComponent(id)}/read`, { method: 'POST' }) as Promise<{ success: boolean; unread_count: number }>
+  },
 }
 
 // Re-export standalone helpers for compatibility
+
 export const startRun = codeGuardianApi.startRun
 export const getRun = codeGuardianApi.getRunState
 export const getWorkspace = codeGuardianApi.getWorkspace

@@ -138,13 +138,14 @@ class IncidentService:
         """
         # --- Step 1: Parse repository identity ---
         repo_str = (request.repository or "").strip()
-        if "/" in repo_str:
-            parts = repo_str.split("/", 1)
+        cleaned_repo = repo_str.replace("https://github.com/", "").replace("http://github.com/", "").strip("/")
+        if "/" in cleaned_repo:
+            parts = cleaned_repo.split("/", 1)
             owner = parts[0].strip()
-            repo_name = parts[1].strip()
+            repo_name = parts[1].strip().replace(".git", "")
         else:
             owner = ""
-            repo_name = repo_str
+            repo_name = cleaned_repo
 
         # --- Step 2: Find registered repository ---
         repo = None
@@ -271,7 +272,7 @@ class IncidentService:
             id=uuid.uuid4(),
             incident_id=incident.id,
             service_name=request.service,
-            event_type="RUNTIME_EXCEPTION",
+            event_type="error",
             timestamp=now,
             request_id=request.request_id,
             endpoint=request.endpoint,
@@ -309,7 +310,7 @@ class IncidentService:
         # --- Persist BEFORE background task starts ---
         self.db.commit()
         logger.info(
-            f"Ingested incident {incident.id} → run {run_id} "
+            f"Ingested incident {incident.id} -> run {run_id} "
             f"(repo={repo_str}, fingerprint={fingerprint[:16]}...)"
         )
 

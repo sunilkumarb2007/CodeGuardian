@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { approveRun, getWorkspace, rejectRun, setChangedFileDecision } from '../api/client'
+import { useCallback, useEffect, useState } from 'react'
+import { approveRun, getWorkspace, rejectRun, setChangedFileDecision, API_BASE_URL } from '../api/client'
 import { normalizeWorkspace } from '../api/normalize'
 import type { Run } from '../api/types'
 
@@ -28,10 +28,6 @@ function isTerminal(run: Run | undefined): boolean {
   return terminalStates.includes(run.status || '')
 }
 
-function isPaused(run: Run | undefined): boolean {
-  return run?.status === 'waiting_for_approval'
-}
-
 interface UseRunResult {
   run?: Run
   error?: string
@@ -48,7 +44,6 @@ export function useRun(runId: string | undefined): UseRunResult {
   const [error, setError] = useState<string | undefined>(undefined)
   const [loading, setLoading] = useState(Boolean(runId))
   const [deciding, setDeciding] = useState(false)
-  const pollCount = useRef(0)
 
   const load = useCallback(async (): Promise<Run | undefined> => {
     if (!runId) return undefined
@@ -65,38 +60,56 @@ export function useRun(runId: string | undefined): UseRunResult {
     }
   }, [runId])
 
-  // Polling stops as soon as the run reaches a terminal state or the approval
-  // gate, so an idle workspace never keeps hitting the backend.
   useEffect(() => {
     if (!runId) {
       setRun(undefined)
       setLoading(false)
       return
     }
-    
-    // Clear stale run state when switching IDs
+
     setRun(undefined)
     setLoading(true)
-    
-    let cancelled = false
-    let timer: number | undefined
-    pollCount.current = 0
 
-    const tick = async () => {
-      const next = await load()
-      if (cancelled) return
-      pollCount.current += 1
-      if (isTerminal(next) || isPaused(next) || pollCount.current >= MAX_POLLS) return
-      timer = window.setTimeout(() => void tick(), POLL_INTERVAL_MS)
+    const base = API_BASE_URL || (typeof window !== 'undefined' ? window.location.origin : '')
+    const wsProtocol = base.startsWith('https') ? 'wss:' : 'ws:'
+    const wsHost = base.replace(/^https?:\/\//, '')
+    const wsUrl = `${wsProtocol}//${wsHost}/api/orchestration/runs/${runId}/ws`
+    let ws: WebSocket | null = null
+
+    try {
+      ws = new WebSocket(wsUrl)
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data)
+          const next = normalizeWorkspace(data)
+          setRun(next)
+          setError(undefined)
+          setLoading(false)
+          if (isTerminal(next)) {
+            ws?.close()
+          }
+        } catch (err) {
+          console.error("Failed to parse websocket message", err)
+        }
+      }
+
+      ws.onerror = () => {
+        // Fallback to initial HTTP load if WS fails
+        void load()
+      }
+      
+      ws.onclose = () => {
+        setLoading(false)
+      }
+    } catch {
+      void load()
     }
-
-    void tick()
 
     return () => {
-      cancelled = true
-      if (timer !== undefined) window.clearTimeout(timer)
+      ws?.close()
     }
-  }, [load, runId])
+  }, [runId, load])
 
   const decide = useCallback(
     async (action: 'approve' | 'reject') => {

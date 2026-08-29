@@ -1,7 +1,7 @@
 import { readString } from './json'
 import { asRecord } from './json'
 
-const RAW_BASE = import.meta.env.VITE_API_BASE_URL ?? ''
+const RAW_BASE = import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? 'https://codeguardian-api-vwmb.onrender.com' : '')
 export const API_BASE_URL = RAW_BASE.replace(/\/+$/, '')
 
 export class ApiError extends Error {
@@ -46,7 +46,18 @@ async function request(path: string, init?: RequestInit): Promise<unknown> {
     )
   }
 
+  const contentType = response.headers.get('content-type') || ''
   const text = await response.text()
+
+  if (contentType.includes('text/html') || text.trim().startsWith('<!doctype html') || text.trim().startsWith('<html')) {
+    throw new ApiError(
+      `Received HTML page instead of API response from ${API_BASE_URL || window.location.origin}. Check backend API URL configuration.`,
+      response.status === 200 ? 502 : response.status,
+      'Invalid Backend Response',
+      'HTML received instead of JSON',
+    )
+  }
+
   const payload: unknown = text ? safeParse(text) : undefined
 
   if (!response.ok) {
@@ -88,11 +99,36 @@ function safeParse(text: string): unknown {
   }
 }
 
-export function startRun(repositoryUrl: string, failureInput?: Record<string, unknown>): Promise<unknown> {
-  return request('/api/orchestration/run', {
-    method: 'POST',
-    body: JSON.stringify({ repository_url: repositoryUrl, failure_input: failureInput }),
-  })
+export async function startRun(
+  repositoryUrl: string,
+  failureInput?: Record<string, unknown>,
+): Promise<{ run_id: string; [key: string]: unknown }> {
+  try {
+    const res = (await request('/api/orchestration/run', {
+      method: 'POST',
+      body: JSON.stringify({ repository_url: repositoryUrl, failure_input: failureInput }),
+    })) as Record<string, unknown>
+    const id = readString(asRecord(res), 'run_id', 'runId', 'id')
+    if (id) {
+      return { run_id: id, ...res }
+    }
+  } catch (err) {
+    if (err instanceof ApiError && (err.status === 404 || err.status === 405)) {
+      const ingestRes = (await request('/api/incidents/ingest', {
+        method: 'POST',
+        body: JSON.stringify({
+          repository: repositoryUrl,
+          ...(failureInput || {}),
+        }),
+      })) as Record<string, unknown>
+      const id = readString(asRecord(ingestRes), 'run_id', 'runId', 'id')
+      if (id) {
+        return { run_id: id, ...ingestRes }
+      }
+    }
+    throw err
+  }
+  throw new ApiError('The backend accepted the request but did not return a valid run ID.', 500, 'Invalid response', 'Missing run_id')
 }
 
 export function getRun(runId: string): Promise<unknown> {

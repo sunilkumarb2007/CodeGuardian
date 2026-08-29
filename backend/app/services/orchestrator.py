@@ -443,6 +443,26 @@ class CodeGuardianOrchestrator:
                 machine.transition_to(RunState.WAITING_FOR_APPROVAL)
                 update_run_state(RunState.WAITING_FOR_APPROVAL)
                 emit_event("STATUS", "WAITING FOR APPROVAL")
+                
+                # Send email / notification
+                from app.services.notification_service import NotificationService
+                import urllib.parse
+                frontend_base = os.getenv("FRONTEND_URL") or os.getenv("FRONTEND_ORIGIN") or "http://localhost:5173"
+                approve_url = f"{frontend_base.rstrip('/')}/approve/{run_id}"
+                
+                with SessionLocal() as db:
+                    incident = db.query(Incident).filter(Incident.id == uuid.UUID(incident_id)).first()
+                    patch = db.query(Patch).filter(Patch.incident_id == uuid.UUID(incident_id)).order_by(Patch.created_at.desc()).first()
+                    
+                    if incident and patch:
+                        NotificationService.emit_notification(
+                            run_id=run_id,
+                            notification_type="REPAIR_READY",
+                            title=f"Repair Verified for {incident.title or 'Incident'}",
+                            message=f"CodeGuardian has verified a patch for the incident {incident.id}.\n\nRoot Cause: {patch.generation_reason}\n\nPlease click the link below to 1-click approve and merge the fix to production.",
+                            action_url=approve_url,
+                            db_session=db
+                        )
 
                 
         except Exception as e:
@@ -508,11 +528,41 @@ class CodeGuardianOrchestrator:
                 deliv_svc = DeliveryService(db)
                 deliv_res = deliv_svc.run_delivery(incident_id, patch_id, repo_url)
             
-            if deliv_res.status == "pr_created":
+            if deliv_res.status in ("pr_created", "pr_merged"):
                 machine.transition_to(RunState.DELIVERED)
                 update_run_state(RunState.DELIVERED)
-                emit_event("STATUS", "PULL_REQUEST_CREATED")
-                
+                emit_event("STATUS", "PULL_REQUEST_DELIVERED")
+
+                if deliv_res.status == "pr_merged":
+                    # Post-Merge Verification
+                    machine.transition_to(RunState.POST_MERGE_REPLAY_RUNNING)
+                    update_run_state(RunState.POST_MERGE_REPLAY_RUNNING)
+                    emit_event("STATUS", "POST_MERGE_VERIFICATION", "Pulling latest main and verifying the defect is fixed")
+                    
+                    with SessionLocal() as db:
+                        # Fetch the latest repo code
+                        inspect_svc = RepositoryInspectionService()
+                        inspection_result = inspect_svc.inspect_repository(repo_url, db=db, repository_id=repo.id)
+                        arch_dict = inspection_result.architecture.model_dump() if inspection_result.architecture else {}
+                        db.commit()
+                        
+                        # Re-run replay on default branch WITHOUT patch
+                        event_logger = BackendEventLogger(db, run_id)
+                        replay_eng = ReplayEngine(event_logger=event_logger)
+                        # We pass patch=None so it doesn't apply anything, just runs baseline tests
+                        post_merge_res, baseline_details, _ = replay_eng.run_replay(incident, None, run_id, repo, arch_dict)
+
+                    if post_merge_res == "BASELINE_ONLY" and baseline_details.get("exit_code") == 0:
+                        # This means the failure is fixed in main! 
+                        emit_event("VALIDATION", "POST_MERGE_VERIFIED", "Post-merge replay returned 200/Success. Defect verified as resolved in production.")
+                        machine.transition_to(RunState.POST_MERGE_VERIFIED)
+                        update_run_state(RunState.POST_MERGE_VERIFIED)
+                    else:
+                        emit_event("VALIDATION", "POST_MERGE_FAILED", "Post-merge replay still fails. The merge did not resolve the defect.")
+                        machine.transition_to(RunState.REPLAY_FAILED)
+                        update_run_state(RunState.REPLAY_FAILED, "POST_MERGE_FAILED", "Post merge verification failed")
+                        return
+
                 # Memory Phase
                 with SessionLocal() as db:
                     mem_svc = MemoryService(db)

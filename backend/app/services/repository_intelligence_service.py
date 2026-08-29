@@ -417,3 +417,39 @@ class RepositoryIntelligenceService:
             "commit_sha": "HEAD",
             "analyzed_at": datetime.utcnow().isoformat()
         }
+
+    @classmethod
+    def ensure_index_persisted(cls, db, repo_path: str, repository_id, commit_sha: str):
+        from app.db.models import RepositoryIntelligence
+        import uuid
+        
+        existing = db.query(RepositoryIntelligence).filter(
+            RepositoryIntelligence.repository_id == repository_id,
+            RepositoryIntelligence.commit_sha == commit_sha
+        ).first()
+
+        if existing:
+            logger.info(f"RepositoryIntelligence already exists for repo {repository_id} commit {commit_sha}")
+            return existing
+
+        logger.info(f"Generating new RepositoryIntelligence for repo {repository_id} commit {commit_sha}")
+        intelligence = cls.analyze_repository(repo_path, commit_sha)
+        
+        new_index = RepositoryIntelligence(
+            id=uuid.uuid4(),
+            repository_id=repository_id,
+            commit_sha=commit_sha,
+            architecture_type=intelligence.get("architecture_type", "SINGLE_APPLICATION"),
+            services_inventory=intelligence.get("services_inventory", []),
+            service_graph=intelligence.get("service_graph", {}),
+            dependency_graph=intelligence.get("dependency_graph", {}),
+            symbol_index=intelligence.get("symbol_index", {}),
+            endpoint_index=intelligence.get("endpoint_index", []),
+            config_manifest=intelligence.get("config_manifest", []),
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
+        db.add(new_index)
+        db.commit()
+        db.refresh(new_index)
+        return new_index

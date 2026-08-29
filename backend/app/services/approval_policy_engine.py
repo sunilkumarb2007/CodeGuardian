@@ -72,3 +72,34 @@ class ApprovalPolicyEngine:
             ),
             "evaluated_at": datetime.utcnow().isoformat()
         }
+
+    @classmethod
+    def verify_approval_freshness(
+        cls,
+        approved_commit_sha: str,
+        current_branch_sha: str
+    ) -> Dict[str, Any]:
+        """
+        Verifies that the commit approved matches the current branch HEAD.
+        If the branch was modified after approval, status is REVALIDATION_REQUIRED.
+        """
+        if not approved_commit_sha or not current_branch_sha:
+            return {
+                "status": "REVALIDATION_REQUIRED",
+                "valid": False,
+                "reason": "Missing commit SHA for validation"
+            }
+        
+        if approved_commit_sha.strip().lower() != current_branch_sha.strip().lower():
+            return {
+                "status": "REVALIDATION_REQUIRED",
+                "valid": False,
+                "reason": f"Target branch head '{current_branch_sha[:8]}' differs from approved commit '{approved_commit_sha[:8]}'. Stale approval detected."
+            }
+            
+        return {
+            "status": "VALID",
+            "valid": True,
+            "reason": "Approval matches current branch head commit."
+        }
+

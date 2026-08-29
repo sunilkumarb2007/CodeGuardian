@@ -28,6 +28,50 @@ def ingest_incident(request: IncidentIngestRequest, background_tasks: Background
     result = service.ingest_incident(request, background_tasks)
     return result
 
+@router.post("/webhook/{source}", response_model=IncidentIngestResponse, status_code=202)
+def ingest_provider_webhook(
+    source: str,
+    payload: dict,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """
+    Provider-neutral Ingestion Gateway.
+    Accepts raw webhooks from Render, Vercel, AWS, OTel, etc.,
+    normalizes them, and launches autonomous investigation.
+    """
+    from app.services.incident_adapters import get_adapter_for_source
+    adapter = get_adapter_for_source(source)
+    normalized = adapter.normalize(payload)
+    
+    # Map normalized incident to IncidentIngestRequest
+    ingest_req = IncidentIngestRequest(
+        repository=normalized.repository,
+        repository_id=UUID(normalized.repository_id) if normalized.repository_id else None,
+        branch=normalized.branch,
+        commit_sha=normalized.commit_sha,
+        environment=normalized.environment,
+        provider=normalized.provider,
+        project=normalized.project,
+        deployment_id=normalized.deployment_id,
+        service=normalized.service,
+        endpoint=normalized.endpoint,
+        status_code=normalized.status_code,
+        request_id=normalized.request_id,
+        trace_id=normalized.trace_id,
+        span_id=normalized.span_id,
+        exception=normalized.exception,
+        message=normalized.message,
+        stack_trace=normalized.stack_trace,
+        timestamp=normalized.timestamp,
+        source=normalized.source,
+        metadata=normalized.metadata,
+    )
+    
+    service = IncidentService(db)
+    return service.ingest_incident(ingest_req, background_tasks)
+
+
 @router.get("", response_model=List[IncidentResponse])
 def get_incidents(db: Session = Depends(get_db)):
     service = IncidentService(db)

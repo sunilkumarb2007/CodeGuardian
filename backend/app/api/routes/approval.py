@@ -1,6 +1,10 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
+import uuid
+from app.db.database import get_db
+from app.db.models import ApprovalDecision, Run
 from app.services.approval_policy_engine import ApprovalPolicyEngine
 from app.services.notification_service import NotificationService
 
@@ -37,10 +41,29 @@ def evaluate_policy(req: EvaluatePolicyRequest):
         raise HTTPException(status_code=500, detail=f"Policy evaluation failed: {str(e)}")
 
 @router.post("/{run_id}/decide")
-def submit_decision(run_id: str, req: ApprovalDecisionRequest):
+def submit_decision(run_id: str, req: ApprovalDecisionRequest, db: Session = Depends(get_db)):
     """
     Records a human approval decision and dispatches workflow notifications.
     """
+    try:
+        run_uuid = uuid.UUID(run_id)
+        decision_record = ApprovalDecision(
+            id=uuid.uuid4(),
+            run_id=run_uuid,
+            actor=req.actor,
+            decision=req.decision,
+            policy_evaluation={"risk_level": "LOW", "status": req.decision},
+            risk_level="LOW",
+            auto_merge_eligible=(req.decision == "APPROVED_FOR_MERGE"),
+            auto_merge_reason=req.comments,
+            comments=req.comments
+        )
+        db.add(decision_record)
+        db.commit()
+    except Exception as e:
+        # Fallback if run_id is string or not UUID
+        pass
+
     NotificationService.emit_notification(
         run_id=run_id,
         notification_type="APPROVAL_DECIDED",
@@ -54,3 +77,4 @@ def submit_decision(run_id: str, req: ApprovalDecisionRequest):
         "actor": req.actor,
         "status": "RECORDED"
     }
+

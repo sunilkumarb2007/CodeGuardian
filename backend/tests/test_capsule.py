@@ -22,13 +22,16 @@ def test_capsule_export_and_import_validation():
             db.add(app)
             db.flush()
 
+        max_inc = db.query(Incident).order_by(Incident.incident_number.desc()).first()
+        next_num = (max_inc.incident_number + 1) if max_inc else 1
+
         incident = Incident(
             id=uuid.uuid4(),
-            incident_number=9999,
+            incident_number=next_num,
             application_id=app.id,
             title="Capsule Test Incident",
-            status="active",
-            resolution_status="investigating",
+            status="detected",
+            resolution_status="unresolved",
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc),
         )

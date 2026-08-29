@@ -451,7 +451,7 @@ export default function Landing() {
               ) : null}
             </form>
 
-            {/* Real-world Interactive Hero Visual Artifact */}
+            {/* Real-world Interactive Hero Visual Artifact - Clearly labeled DEMO PREVIEW */}
             <div className="pt-8 max-w-4xl mx-auto text-left">
               <div className="rounded-xl border border-ide-divider bg-[#0A0E10] shadow-2xl overflow-hidden font-mono text-xs">
                 {/* Window Top Bar */}
@@ -462,9 +462,14 @@ export default function Landing() {
                     <span className="h-2.5 w-2.5 rounded-full bg-lime/80" />
                     <span className="ml-2 text-zinc-300 font-semibold">production-service / api-cluster</span>
                   </div>
-                  <span className="px-2 py-0.5 rounded bg-red-500/20 text-red-400 font-bold border border-red-500/30">
-                    HTTP 500 CRASH REPRODUCED
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 font-bold border border-purple-500/30 text-[10px]">
+                      DEMO PREVIEW
+                    </span>
+                    <span className="px-2 py-0.5 rounded bg-red-500/20 text-red-400 font-bold border border-red-500/30">
+                      HTTP 500 CRASH REPRODUCED
+                    </span>
+                  </div>
                 </div>
 
                 {/* Artifact Content Body */}
@@ -472,7 +477,7 @@ export default function Landing() {
                   {/* Causal Flow Chain */}
                   <div>
                     <span className="text-[10px] text-zinc-500 uppercase tracking-widest block mb-2 font-bold">
-                      GhostTrace Causal Flow (Ingress → Root Cause)
+                      GhostTrace Causal Flow (Sample Ingress → Root Cause)
                     </span>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       <div className="p-2.5 rounded-lg bg-ink-900 border border-ide-divider flex items-center justify-between">
@@ -491,22 +496,27 @@ export default function Landing() {
                   </div>
 
                   {/* Verification Proof Matrix */}
-                  <div className="pt-3 border-t border-ide-divider grid grid-cols-2 sm:grid-cols-4 gap-3 text-[11px]">
-                    <div className="p-2 rounded bg-ink-900 border border-ide-divider">
-                      <span className="text-zinc-500 block text-[9px] uppercase">Patch Scope</span>
-                      <span className="text-zinc-200 font-semibold">1 file, 4 lines</span>
-                    </div>
-                    <div className="p-2 rounded bg-ink-900 border border-ide-divider">
-                      <span className="text-zinc-500 block text-[9px] uppercase">Replay Proof</span>
-                      <span className="text-lime font-semibold">500 → 200 OK</span>
-                    </div>
-                    <div className="p-2 rounded bg-ink-900 border border-ide-divider">
-                      <span className="text-zinc-500 block text-[9px] uppercase">Sandboxed Build</span>
-                      <span className="text-lime font-semibold">mvnw: SUCCESS</span>
-                    </div>
-                    <div className="p-2 rounded bg-ink-900 border border-ide-divider">
-                      <span className="text-zinc-500 block text-[9px] uppercase">Delivery</span>
-                      <span className="text-lime font-semibold">PR #4 Ready</span>
+                  <div className="pt-3 border-t border-ide-divider">
+                    <span className="text-[10px] text-zinc-500 uppercase tracking-widest block mb-2 font-bold">
+                      Verification Proof Matrix (Sample Reference)
+                    </span>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[11px]">
+                      <div className="p-2 rounded bg-ink-900 border border-ide-divider">
+                        <span className="text-zinc-500 block text-[9px] uppercase">Patch Scope</span>
+                        <span className="text-zinc-200 font-semibold">1 file, 4 lines</span>
+                      </div>
+                      <div className="p-2 rounded bg-ink-900 border border-ide-divider">
+                        <span className="text-zinc-500 block text-[9px] uppercase">Replay Proof</span>
+                        <span className="text-lime font-semibold">500 → 200 OK</span>
+                      </div>
+                      <div className="p-2 rounded bg-ink-900 border border-ide-divider">
+                        <span className="text-zinc-500 block text-[9px] uppercase">Sandboxed Build</span>
+                        <span className="text-lime font-semibold">mvnw: SUCCESS</span>
+                      </div>
+                      <div className="p-2 rounded bg-ink-900 border border-ide-divider">
+                        <span className="text-zinc-500 block text-[9px] uppercase">Delivery</span>
+                        <span className="text-lime font-semibold">PR #4 Ready</span>
+                      </div>
                     </div>
                   </div>
                 </div>

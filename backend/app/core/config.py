@@ -17,6 +17,12 @@ class Settings(BaseSettings):
     github_api_url: str = "https://api.github.com"
     github_default_branch: str | None = None
     github_owner: str | None = None
+    github_app_id: str | None = "4763885"
+    github_app_private_key: str | None = None
+    github_app_private_key_path: str | None = None
+    github_webhook_secret: str | None = None
+    frontend_origin: str | None = None
+    frontend_url: str | None = None
 
     openrouter_api_key: str | None = None
     openrouter_model: str = "poolside/laguna-s-2.1:free"

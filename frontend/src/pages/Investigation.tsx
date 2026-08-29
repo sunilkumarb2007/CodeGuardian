@@ -69,15 +69,15 @@ export default function Investigation() {
     run?.status === 'no_failure_found' ||
     run?.status === 'no_failure_evidence'
 
-  const displayRunId = runId ? `INV-${runId.slice(0, 4).toUpperCase()}` : 'INV-710B'
-  const incidentTitle = isHealthyRun ? 'ANALYSIS COMPLETE' : (run?.incident?.title || run?.incident?.errorType || 'NO INCIDENT TITLE')
+  const displayRunId = runId ? `INV-${runId.slice(0, 4).toUpperCase()}` : 'NOT AVAILABLE'
+  const incidentTitle = isHealthyRun ? 'ANALYSIS COMPLETE' : (run?.incident?.title || run?.incident?.errorType || 'NOT AVAILABLE')
   const incidentDescription = isHealthyRun ? 'No reproducible failure found against repository baseline.' : (run?.incident?.summary || 'No incident summary available.')
   const httpStatus = isHealthyRun ? '200 OK' : (run?.incident?.httpStatus ?? 'N/A')
   const endpoint = isHealthyRun ? '/api/health' : (run?.incident?.endpoint ?? 'N/A')
-  const serviceName = run?.incident?.service ?? run?.repository?.name ?? 'UNKNOWN'
+  const serviceName = run?.incident?.service ?? run?.repository?.name ?? 'NOT AVAILABLE'
   const requestId = run?.incident?.requestId ?? 'N/A'
-  const firstSeen = run?.incident?.firstSeen ?? 'RECORDED'
-  const environment = run?.incident?.environment ?? 'UNKNOWN'
+  const firstSeen = run?.incident?.firstSeen ?? 'NOT AVAILABLE'
+  const environment = run?.incident?.environment ?? 'NOT AVAILABLE'
   const fingerprint = isHealthyRun ? 'HEALTHY_BASELINE' : (run?.incident?.fingerprint ?? 'PENDING')
   const attempts = isHealthyRun ? '3 / 3 (Passed)' : (run?.incident?.attempts !== undefined ? `${run.incident.attempts} / 3` : '0 / 3')
 

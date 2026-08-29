@@ -92,6 +92,13 @@ class RepositoryInspectionService:
                 db.commit()
                 check_files = db.query(RepositoryFile).filter(RepositoryFile.repository_id == repository_id).all()
                 logger.info(f"Verified {len(check_files)} files in DB after ingestion")
+                
+                # 2.6 Persist Repository Intelligence (Phase 2)
+                try:
+                    from app.services.repository_intelligence_service import RepositoryIntelligenceService
+                    RepositoryIntelligenceService.ensure_index_persisted(db, temp_dir, repository_id, commit_sha)
+                except Exception as e:
+                    logger.error(f"Failed to generate repository intelligence index: {e}")
             
             # 3. Detect build/test failures
             build_passed, test_passed, failure_output, details = self._run_static_checks(temp_dir, architecture)

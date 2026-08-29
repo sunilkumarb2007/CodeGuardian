@@ -1,6 +1,7 @@
 import { Link, NavLink, useLocation } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { CursorFX } from './CursorFX'
+import { SearchPalette } from './SearchPalette'
 
 const NAV = [
   { label: 'Platform', to: '/#platform' },
@@ -146,6 +147,7 @@ export function Shell({ children, cta }: { children: ReactNode; cta?: ReactNode 
   return (
     <div className="min-h-screen bg-ink-900">
       <CursorFX />
+      <SearchPalette />
       <TopNav cta={cta} />
       {children}
     </div>

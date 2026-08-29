@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect
+from fastapi.concurrency import run_in_threadpool
+import asyncio
 from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.services.workspace_service import WorkspaceService
@@ -160,3 +162,30 @@ def get_immunization(run_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Run not found")
     return ws.get("immunization", {})
 
+@router.websocket("/{run_id}/ws")
+async def websocket_endpoint(websocket: WebSocket, run_id: str, db: Session = Depends(get_db)):
+    await websocket.accept()
+    svc = WorkspaceService(db)
+    
+    def fetch_state():
+        return svc.get_run_workspace(run_id)
+
+    try:
+        while True:
+            ws_data = await run_in_threadpool(fetch_state)
+            if ws_data:
+                raw_stages = ws_data.get("stages", [])
+                stages_dict = {}
+                if isinstance(raw_stages, list):
+                    for s in raw_stages:
+                        if isinstance(s, dict) and "id" in s:
+                            stages_dict[s["id"]] = s.get("status", "unknown")
+                        elif isinstance(s, dict) and "name" in s:
+                            stages_dict[s["name"]] = s.get("status", "unknown")
+                elif isinstance(raw_stages, dict):
+                    stages_dict = raw_stages
+
+                await websocket.send_json(ws_data)
+            await asyncio.sleep(1.0)
+    except WebSocketDisconnect:
+        logger.info(f"WebSocket disconnected for run_id: {run_id}")

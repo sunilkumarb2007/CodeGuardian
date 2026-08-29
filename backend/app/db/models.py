@@ -208,6 +208,26 @@ class Repository(Base):
     updated_at = Column(TIMESTAMP, nullable=False)
 
 
+class RepositoryConnection(Base):
+    __tablename__ = 'repository_connections'
+
+    id = Column(GUID, primary_key=True, default=uuid.uuid4, nullable=False)
+    repository_id = Column(GUID, ForeignKey('repositories.id'), nullable=True, unique=True)
+    provider = Column(String(50), nullable=False, default='github')
+    owner = Column(String(150), nullable=False)
+    name = Column(String(200), nullable=False)
+    repository_url = Column(Text, nullable=False)
+    default_branch = Column(String(100), nullable=False, default='main')
+    monitoring_enabled = Column(Boolean, nullable=False, default=True)
+    automatic_investigation_enabled = Column(Boolean, nullable=False, default=True)
+    auto_pr_enabled = Column(Boolean, nullable=False, default=False)
+    approval_policy = Column(String(50), nullable=False, default='HUMAN_APPROVAL_REQUIRED')
+    notification_policy = Column(JSONType, nullable=False, default=dict)
+    webhook_secret = Column(String(255), nullable=True)
+    created_at = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
+    updated_at = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
+
+
 class RepositoryFile(Base):
     __tablename__ = 'repository_files'
 

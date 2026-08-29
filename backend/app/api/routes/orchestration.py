@@ -138,3 +138,21 @@ def handle_approval(run_id: str, req: ApprovalRequest, background_tasks: Backgro
         return {"status": "REJECTED"}
     else:
         raise HTTPException(status_code=400, detail="Invalid action")
+
+@router.get("/runs/{run_id}/approve")
+def handle_one_click_approval(run_id: str, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    run = db.query(Run).filter(Run.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+        
+    if run.state != "WAITING_FOR_APPROVAL":
+        return {"status": "Already processed or invalid state", "current_state": run.state}
+        
+    from app.engine.run_state_machine import RunState
+    run.state = RunState.PATCH_APPROVED.value
+    db.commit()
+    
+    orchestrator = CodeGuardianOrchestrator()
+    background_tasks.add_task(orchestrator.continue_after_approval, run_id)
+    return {"message": "Run Approved! Check GitHub for the PR and merge status."}
+
