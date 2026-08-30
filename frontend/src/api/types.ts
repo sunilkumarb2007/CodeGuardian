@@ -15,6 +15,8 @@ export type RunStatus =
   | 'failed'
   | 'investigation_failed'
   | 'patch_apply_failed'
+  | 'build_failed'
+  | 'tests_failed'
   | 'replay_failed'
   | 'validation_failed'
   | 'baseline_failure_not_reproduced'

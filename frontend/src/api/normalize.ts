@@ -102,10 +102,10 @@ const RUN_STATUS: Record<string, RunStatus> = {
   patch_language_mismatch: 'failed',
   patch_apply_failed: 'failed',
   repair_exhausted: 'failed',
-  build_failed: 'failed',
-  tests_failed: 'failed',
-  replay_failed: 'failed',
-  validation_failed: 'failed',
+  build_failed: 'build_failed',
+  tests_failed: 'tests_failed',
+  replay_failed: 'replay_failed',
+  validation_failed: 'validation_failed',
 }
 
 function humanize(value: string): string {

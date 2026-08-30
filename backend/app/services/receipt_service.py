@@ -187,6 +187,29 @@ class ReceiptService:
                 {"gate": "Sandboxed Build", "status": "PASS"},
                 {"gate": "Regression Suite", "status": "PASS"},
             ]
+        elif is_failed and run.state in ["BUILD_FAILED", "RunState.BUILD_FAILED"]:
+            v_replay = "PASS"
+            v_build = "FAIL"
+            v_tests = "BLOCKED"
+            v_status = "FAILED"
+            gates_detail = [
+                {"gate": "Path Safety", "status": "PASS"},
+                {"gate": "Patch Context", "status": "PASS"},
+                {"gate": "Ghost Replay", "status": "PASS"},
+                {"gate": "Sandboxed Build", "status": "FAIL"},
+            ]
+        elif is_failed and (run.state in ["TESTS_FAILED", "RunState.TESTS_FAILED"] or "test" in (run.error_code or "").lower()):
+            v_replay = "PASS"
+            v_build = "PASS"
+            v_tests = "FAIL"
+            v_status = "FAILED"
+            gates_detail = [
+                {"gate": "Path Safety", "status": "PASS"},
+                {"gate": "Patch Context", "status": "PASS"},
+                {"gate": "Ghost Replay", "status": "PASS"},
+                {"gate": "Sandboxed Build", "status": "PASS"},
+                {"gate": "Regression Suite", "status": "FAIL"},
+            ]
         elif is_failed and "VALIDATION" in (run.state or ""):
             v_replay = "FAIL"
             v_build = "FAIL"

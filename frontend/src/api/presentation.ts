@@ -36,6 +36,7 @@ export function resolveRunPresentation(run?: Run): ResolvedRunPresentation {
   const isBaselineFailureNotReproduced = status === 'baseline_failure_not_reproduced'
   const isFailed = !isNoFailure && (status === 'failed' || status === 'delivery_failed' || status === 'rejected' ||
     status === 'investigation_failed' || status === 'patch_apply_failed' ||
+    status === 'build_failed' || status === 'tests_failed' ||
     status === 'replay_failed' || status === 'validation_failed')
   const isPaused = status === 'waiting_for_approval'
   const isTerminal = isCompleted || isNoFailure || isBaselineFailureNotReproduced || isFailed
@@ -101,6 +102,8 @@ export function resolveRunPresentation(run?: Run): ResolvedRunPresentation {
     let failureMsg = 'RUN FAILED'
     if (status === 'rejected') failureMsg = 'PATCH REJECTED'
     else if (status === 'patch_apply_failed') failureMsg = 'PATCH APPLY FAILED'
+    else if (status === 'build_failed' || run?.currentStage?.includes('build')) failureMsg = 'BUILD FAILED'
+    else if (status === 'tests_failed' || run?.currentStage?.includes('test')) failureMsg = 'TESTS FAILED'
     else if (status === 'replay_failed') failureMsg = 'REPLAY FAILED'
     else if (status === 'validation_failed') failureMsg = 'VALIDATION FAILED'
     else if (status === 'delivery_failed') failureMsg = 'DELIVERY FAILED'
@@ -124,6 +127,9 @@ export function resolveRunPresentation(run?: Run): ResolvedRunPresentation {
   let replayOutcome = 'PENDING'
   let replaySummary = run?.replay?.summary || 'Replay validation in progress.'
 
+  const errStr = (run?.error || '').toLowerCase()
+  const stageStr = (run?.currentStage || '').toLowerCase()
+
   if (isCompleted) {
     currentAction = 'Investigation Complete'
     engineeringAnalysis = 'All 17 pipeline stages cleared, verified against build/replay/tests, and delivered via GitHub PR.'
@@ -145,24 +151,39 @@ export function resolveRunPresentation(run?: Run): ResolvedRunPresentation {
   } else if (status === 'delivery_running' || status === 'delivered') {
     currentAction = 'Delivering Pull Request'
     engineeringAnalysis = 'Creating Git feature branch, committing patch, pushing to GitHub, and opening Pull Request.'
-  } else if (status === 'investigation_failed') {
+  } else if (status === 'investigation_failed' || stageStr.includes('investigation')) {
     currentAction = 'Investigation Failed'
-    if (run?.error?.includes('TRUNCATED') || run?.error?.includes('incomplete')) {
+    if (errStr.includes('truncated') || errStr.includes('incomplete')) {
       engineeringAnalysis = 'AI output was incomplete. CodeGuardian could not safely generate a complete repair.'
     } else {
       engineeringAnalysis = run?.error || 'Investigation boundaries exceeded without viable patch candidate.'
     }
     replayOutcome = 'BLOCKED'
     replaySummary = 'Investigation failed. Replay and Validation stages are blocked.'
-  } else if (isFailed || isTerminal) {
-    currentAction = status === 'rejected' ? 'Patch Rejected by Operator' : 'Investigation Halted'
-    if (run?.error?.includes('TRUNCATED') || run?.error?.includes('incomplete')) {
-      engineeringAnalysis = 'AI output was incomplete. CodeGuardian could not safely generate a complete repair.'
+  } else if (status === 'build_failed' || stageStr.includes('build')) {
+    currentAction = 'Build Halted'
+    engineeringAnalysis = run?.error || 'Stage 12 Build failed: compilation error in patched candidate workspace.'
+    replayOutcome = 'BLOCKED'
+    replaySummary = 'Compilation failed. Test and Validation stages are blocked.'
+  } else if (status === 'tests_failed' || stageStr.includes('test')) {
+    currentAction = 'Test Execution Halted'
+    if (errStr.includes('permission denied') || errStr.includes('errno 13')) {
+      engineeringAnalysis = 'Test launcher could not execute wrapper due to permission constraints.'
     } else {
-      engineeringAnalysis = run?.error || 'Investigation halted: provider or validation bounds exceeded without viable patch candidate.'
+      engineeringAnalysis = run?.error || 'Stage 13 Tests failed: regression test suite encountered assertion failures or errors.'
     }
     replayOutcome = 'FAILED'
-    replaySummary = run?.error || 'Stage validation or investigation failed.'
+    replaySummary = 'Regression tests failed on candidate patch.'
+  } else if (status === 'delivery_failed' || stageStr.includes('delivery')) {
+    currentAction = 'Delivery Halted'
+    engineeringAnalysis = run?.error || 'Delivery stage failed.'
+    replayOutcome = 'FAILED'
+    replaySummary = 'GitHub delivery halted.'
+  } else if (isFailed || isTerminal) {
+    currentAction = status === 'rejected' ? 'Patch Rejected by Operator' : 'Stage Execution Halted'
+    engineeringAnalysis = run?.error || 'Stage execution halted without viable patch candidate.'
+    replayOutcome = 'FAILED'
+    replaySummary = run?.error || 'Stage validation failed.'
   }
 
   return {

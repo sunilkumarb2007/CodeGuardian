@@ -429,9 +429,22 @@ class CodeGuardianOrchestrator:
                         validated = True
                         emit_event("STATUS", "VALIDATION PASSED")
 
+                    elif replay_res == "BUILD_FAILED":
+                        build_error = patched.get("build_output", "") or patched.get("output", "")
+                        emit_event("ANALYSIS", f"Stage 12 BUILD_FAILED on attempt {attempt}", description=build_error[-2000:])
+                        prior_failure_evidence.append({
+                            "attempt": attempt,
+                            "stage": "BUILD",
+                            "error": f"Compilation failed on patched workspace:\n{build_error[-2000:]}"
+                        })
+                        machine.transition_to(RunState.BUILD_FAILED)
+                        update_run_state(RunState.BUILD_FAILED, error_code="BUILD_FAILED", error_msg=f"Build failed: {build_error[-500:]}")
+                        if attempt < max_attempts:
+                            machine.transition_to(RunState.INVESTIGATION_RUNNING)
+                            # loop continues
+
                     elif replay_res == "PATCH_APPLY_FAILED":
                         # git apply rejected the patch — collect the EXACT error and retry.
-                        # The AI will receive this error on the next attempt and must fix the diff.
                         patch_apply_error = patched.get("error", "git apply failed without detailed output")
                         emit_event("ANALYSIS", f"PATCH_APPLY_FAILED on attempt {attempt}", description=patch_apply_error)
                         prior_failure_evidence.append({
@@ -440,35 +453,41 @@ class CodeGuardianOrchestrator:
                             "error": patch_apply_error
                         })
                         machine.transition_to(RunState.PATCH_APPLY_FAILED)
-                        update_run_state(RunState.PATCH_APPLY_FAILED)
+                        update_run_state(RunState.PATCH_APPLY_FAILED, error_code="PATCH_APPLY_FAILED", error_msg=f"Patch apply failed: {patch_apply_error[:300]}")
                         if attempt < max_attempts:
-                            # Reset state machine to allow next investigation attempt
                             machine.transition_to(RunState.INVESTIGATION_RUNNING)
                             # loop continues
 
                     elif replay_res == "BASELINE_FAILURE_NOT_REPRODUCED":
-                        # The defect fixture is not producing the expected failure.
-                        # This is a test fixture issue, not an AI issue — do not retry.
                         machine.transition_to(RunState.BASELINE_FAILURE_NOT_REPRODUCED)
-                        update_run_state(RunState.BASELINE_FAILURE_NOT_REPRODUCED)
+                        update_run_state(RunState.BASELINE_FAILURE_NOT_REPRODUCED, error_code="BASELINE_FAILURE_NOT_REPRODUCED", error_msg="Defect fixture did not produce expected failure")
                         emit_event("STATUS", "BASELINE_FAILURE_NOT_REPRODUCED: defect fixture did not produce expected failure")
                         return
 
                     elif replay_res == "REPLAY_FAILURE_PERSISTS":
-                        # Patch applied but tests still fail — collect test output as evidence
+                        # Patch applied and built, but tests still fail
                         test_output = patched.get("output", "")
-                        emit_event("ANALYSIS", f"Tests still failing after patch on attempt {attempt}")
+                        test_category = "TEST_ASSERTION_FAILURE"
+                        if "Permission denied" in test_output or "[Errno 13]" in test_output:
+                            test_category = "TEST_LAUNCH_PERMISSION_DENIED"
+                        elif patched.get("timed_out"):
+                            test_category = "TEST_TIMEOUT"
+
+                        emit_event("ANALYSIS", f"Stage 13 TESTS_FAILED ({test_category}) on attempt {attempt}")
                         prior_failure_evidence.append({
                             "attempt": attempt,
                             "stage": "TEST_EXECUTION",
+                            "category": test_category,
                             "error": (
-                                f"Patch applied successfully but tests still fail.\n"
+                                f"Patch applied and compiled successfully, but regression tests failed ({test_category}).\n"
                                 f"Test output (last 2000 chars):\n{test_output[-2000:]}"
                             )
                         })
-                        machine.transition_to(RunState.REPLAY_FAILED)
-                        update_run_state(RunState.REPLAY_FAILED)
-                        # loop continues with error evidence
+                        machine.transition_to(RunState.TESTS_FAILED)
+                        update_run_state(RunState.TESTS_FAILED, error_code=test_category, error_msg=f"Tests failed ({test_category}): {test_output[-500:]}")
+                        if attempt < max_attempts:
+                            machine.transition_to(RunState.INVESTIGATION_RUNNING)
+                            # loop continues
 
                     else:
                         # Unknown result — collect and retry
@@ -479,13 +498,28 @@ class CodeGuardianOrchestrator:
                             "error": f"Replay returned unexpected result: {replay_res}. Output: {patched.get('output', '')[-1000:]}"
                         })
                         machine.transition_to(RunState.REPLAY_FAILED)
-                        update_run_state(RunState.REPLAY_FAILED)
+                        update_run_state(RunState.REPLAY_FAILED, error_code="REPLAY_FAILED", error_msg=f"Replay failed: {replay_res}")
+                        if attempt < max_attempts:
+                            machine.transition_to(RunState.INVESTIGATION_RUNNING)
             
                 if not validated:
-                    machine.transition_to(RunState.REPAIR_EXHAUSTED)
-                    last_err = prior_failure_evidence[-1].get('error', 'Validation bounds exceeded without viable patch candidate') if prior_failure_evidence else 'Validation bounds exceeded without viable patch candidate'
-                    update_run_state(RunState.REPAIR_EXHAUSTED, error_code="REPAIR_EXHAUSTED", error_msg=f"Repair exhausted: {last_err}")
-                    emit_event("STATUS", f"REPAIR_EXHAUSTED after {max_attempts} attempts. Last error: {last_err}")
+                    # Accurately attribute terminal failure based on last failure evidence
+                    last_ev = prior_failure_evidence[-1] if prior_failure_evidence else {}
+                    last_stage = last_ev.get('stage', 'INVESTIGATION')
+                    last_err = last_ev.get('error', 'Validation bounds exceeded without viable patch candidate')
+                    last_cat = last_ev.get('category') or last_stage + "_FAILED"
+
+                    if last_stage == "TEST_EXECUTION":
+                        machine.force_fail(RunState.TESTS_FAILED, f"Tests failed: {last_err[:300]}")
+                        update_run_state(RunState.TESTS_FAILED, error_code=last_cat, error_msg=f"Tests failed after {max_attempts} attempts: {last_err[:500]}")
+                    elif last_stage == "BUILD":
+                        machine.force_fail(RunState.BUILD_FAILED, f"Build failed: {last_err[:300]}")
+                        update_run_state(RunState.BUILD_FAILED, error_code="BUILD_FAILED", error_msg=f"Build failed after {max_attempts} attempts: {last_err[:500]}")
+                    else:
+                        machine.transition_to(RunState.REPAIR_EXHAUSTED)
+                        update_run_state(RunState.REPAIR_EXHAUSTED, error_code="REPAIR_EXHAUSTED", error_msg=f"Repair exhausted: {last_err[:500]}")
+                    
+                    emit_event("STATUS", f"Pipeline halted after {max_attempts} attempts. Final failure: {last_cat}")
                     return
                 
                 machine.transition_to(RunState.WAITING_FOR_APPROVAL)
