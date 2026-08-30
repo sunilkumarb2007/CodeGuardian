@@ -53,7 +53,7 @@ class ReceiptService:
         # Determine receipt type & outcome
         is_healthy = run.state in ["NO_FAILURE_EVIDENCE", "NO_FAILURE_FOUND"]
         is_completed = run.state == "COMPLETED"
-        is_failed = run.state in ["FAILED", "INVESTIGATION_FAILED", "INVESTIGATION_TIMEOUT", "INVESTIGATION_SCHEMA_ERROR", "PATCH_GENERATION_FAILED", "PATCH_APPLY_FAILED", "REPLAY_FAILED", "VALIDATION_FAILED", "DELIVERY_FAILED", "DELIVERY_AUTH_REQUIRED", "REJECTED"]
+        is_failed = run.state in ["FAILED", "INVESTIGATION_FAILED", "INVESTIGATION_TIMEOUT", "INVESTIGATION_SCHEMA_ERROR", "PATCH_GENERATION_FAILED", "PATCH_APPLY_FAILED", "BUILD_FAILED", "TESTS_FAILED", "REPLAY_FAILED", "VALIDATION_FAILED", "DELIVERY_FAILED", "DELIVERY_AUTH_REQUIRED", "REJECTED", "REPAIR_EXHAUSTED"] or "failed" in (run.state or "").lower()
 
         if is_healthy:
             receipt_type = "ANALYSIS_RECEIPT"
