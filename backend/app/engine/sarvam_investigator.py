@@ -49,14 +49,14 @@ class SarvamInvestigator(InvestigatorProvider):
                     "role": "user",
                     "content": (
                         "You are an automated program repair engineer. "
-                        "Do NOT write any chain-of-thought, reasoning steps, or internal monologue. "
+                        "Do not write lengthy internal monologue. "
                         "Immediately output ONLY the final JSON object conforming to the required InvestigationResult schema.\n\n"
                         f"{prompt}"
                     )
                 }
             ],
             "temperature": 0.0,
-            "max_tokens": 4096
+            "max_tokens": 8192
         }
 
         payload_bytes = len(json.dumps(payload).encode('utf-8'))
@@ -226,7 +226,7 @@ class SarvamInvestigator(InvestigatorProvider):
                                     }
                                 ],
                                 "temperature": 0.0,
-                                "max_tokens": 4096
+                                "max_tokens": 8192
                             }
                             rec_resp = client.post(endpoint, headers=headers, json=recovery_payload)
                             if rec_resp.status_code == 200:
