@@ -241,15 +241,20 @@ class SarvamInvestigator(InvestigatorProvider):
                                         rec_content = rec_reasoning[start_b:end_b + 1]
                                 if rec_content:
                                     try:
-                                        rec_clean = rec_content.strip()
-                                        if rec_clean.startswith("```json"):
-                                            rec_clean = rec_clean[7:]
-                                        if rec_clean.startswith("```"):
-                                            rec_clean = rec_clean[3:]
-                                        if rec_clean.endswith("```"):
-                                            rec_clean = rec_clean[:-3]
-                                        rec_clean = rec_clean.strip()
-                                        rec_result = InvestigationResult.model_validate_json(rec_clean)
+                                        rec_clean = rec_clean_str = rec_content.strip()
+                                        if "```json" in rec_clean_str:
+                                            parts = rec_clean_str.split("```json")
+                                            rec_clean_str = parts[1].split("```")[0]
+                                        elif "```" in rec_clean_str:
+                                            parts = rec_clean_str.split("```")
+                                            rec_clean_str = parts[1]
+                                        
+                                        start_b = rec_clean_str.find("{")
+                                        end_b = rec_clean_str.rfind("}")
+                                        if start_b != -1 and end_b > start_b:
+                                            rec_clean_str = rec_clean_str[start_b:end_b + 1]
+                                        
+                                        rec_result = InvestigationResult.model_validate_json(rec_clean_str)
                                         if rec_result.patch_candidate and _validate_diff_completeness(rec_result.patch_candidate.diff):
                                             logger.info("SARVAM_TRUNCATION_RECOVERY_SUCCESS: Recovered valid InvestigationResult via compact schema.")
                                             return rec_result
@@ -260,14 +265,17 @@ class SarvamInvestigator(InvestigatorProvider):
                         raise RuntimeError("AI_OUTPUT_TRUNCATED")
 
                     content = content.strip()
-                    if content.startswith("```json"):
-                        content = content[7:]
-                        if content.endswith("```"):
-                            content = content[:-3]
-                    elif content.startswith("```"):
-                        content = content[3:]
-                        if content.endswith("```"):
-                            content = content[:-3]
+                    if "```json" in content:
+                        content = content.split("```json")[1].split("```")[0]
+                    elif "```" in content:
+                        parts = content.split("```")
+                        if len(parts) >= 3:
+                            content = parts[1]
+                    
+                    s_b = content.find("{")
+                    e_b = content.rfind("}")
+                    if s_b != -1 and e_b > s_b:
+                        content = content[s_b:e_b + 1]
                     content = content.strip()
 
                     # Handle string wrapping/trailing quote artifacts
