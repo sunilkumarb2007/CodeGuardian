@@ -73,7 +73,7 @@ export function useRun(runId: string | undefined): UseRunResult {
     const base = API_BASE_URL || (typeof window !== 'undefined' ? window.location.origin : '')
     const wsProtocol = base.startsWith('https') ? 'wss:' : 'ws:'
     const wsHost = base.replace(/^https?:\/\//, '')
-    const wsUrl = `${wsProtocol}//${wsHost}/api/orchestration/runs/${runId}/ws`
+    const wsUrl = `${wsProtocol}//${wsHost}/api/runs/${runId}/ws`
     let ws: WebSocket | null = null
 
     try {

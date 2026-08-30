@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from typing import Optional
 import uuid
@@ -160,4 +160,27 @@ def handle_one_click_approval(run_id: str, background_tasks: BackgroundTasks, db
     orchestrator = CodeGuardianOrchestrator()
     background_tasks.add_task(orchestrator.continue_after_approval, run_id)
     return {"message": "Run Approved! Check GitHub for the PR and merge status."}
+
+
+@router.websocket("/runs/{run_id}/ws")
+async def orchestration_websocket_endpoint(websocket: WebSocket, run_id: str, db: Session = Depends(get_db)):
+    from starlette.concurrency import run_in_threadpool
+    from app.services.workspace_service import WorkspaceService
+    import asyncio
+    from fastapi import WebSocketDisconnect
+
+    await websocket.accept()
+    svc = WorkspaceService(db)
+    
+    def fetch_state():
+        return svc.get_run_workspace(run_id)
+
+    try:
+        while True:
+            ws_data = await run_in_threadpool(fetch_state)
+            if ws_data:
+                await websocket.send_json(ws_data)
+            await asyncio.sleep(1.0)
+    except WebSocketDisconnect:
+        pass
 
