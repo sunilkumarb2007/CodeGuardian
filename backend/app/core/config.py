@@ -5,9 +5,17 @@ load_dotenv()
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+def get_default_env() -> str:
+    env_val = os.getenv("APP_ENV") or os.getenv("ENVIRONMENT") or os.getenv("ENV")
+    if env_val:
+        return env_val.lower()
+    if os.getenv("RENDER") == "true" or os.getenv("RENDER_SERVICE_ID") or os.getenv("RENDER_INSTANCE_ID"):
+        return "production"
+    return "development"
+
 class Settings(BaseSettings):
     app_name: str = "CodeGuardian"
-    app_env: str = "development"
+    app_env: str = get_default_env()
     debug: bool = True
     database_url: str
     redis_url: str | None = None

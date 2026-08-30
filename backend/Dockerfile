@@ -1,6 +1,8 @@
 FROM python:3.12-slim
 
 WORKDIR /app
+ENV APP_ENV=production
+ENV PYTHONUNBUFFERED=1
 
 # Install system dependencies (git, java, maven for replay execution)
 RUN apt-get update && apt-get install -y \
