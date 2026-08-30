@@ -6,11 +6,16 @@ load_dotenv()
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 def get_default_env() -> str:
+    # If running inside Render cloud environment
+    if os.getenv("RENDER") == "true" or os.getenv("RENDER_SERVICE_ID") or os.getenv("RENDER_INSTANCE_ID"):
+        cloud_env = os.getenv("APP_ENV") or os.getenv("ENVIRONMENT") or os.getenv("ENV")
+        if cloud_env:
+            return cloud_env.lower()
+        return "production"
+
     env_val = os.getenv("APP_ENV") or os.getenv("ENVIRONMENT") or os.getenv("ENV")
     if env_val:
         return env_val.lower()
-    if os.getenv("RENDER") == "true" or os.getenv("RENDER_SERVICE_ID") or os.getenv("RENDER_INSTANCE_ID"):
-        return "production"
     return "development"
 
 class Settings(BaseSettings):
