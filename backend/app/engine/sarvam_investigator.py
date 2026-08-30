@@ -206,22 +206,20 @@ class SarvamInvestigator(InvestigatorProvider):
                                     {
                                         "role": "user",
                                         "content": (
-                                            "Your previous response was incomplete or truncated by the output token limit. "
-                                            "Return ONLY a minimal, complete JSON object. "
-                                            "Do NOT include markdown, preamble, or commentary. "
-                                            "Do NOT repeat the repository analysis. "
-                                            "The unified diff must be complete and valid for the affected file.\n\n"
-                                            "Return strictly this minimal JSON structure:\n"
+                                            "Your previous response was incomplete or truncated. "
+                                            "Return only the final structured JSON result based exclusively on the supplied context. "
+                                            "Do not invent missing repository facts. If a safe repair cannot be generated, return no_repair_available.\n\n"
+                                            "Return strictly this minimal JSON structure with placeholders filled from evidence:\n"
                                             "{\n"
                                             '  "root_cause": "<actual root cause summary>",\n'
                                             '  "root_cause_service": "<actual service name>",\n'
                                             '  "affected_file": "<actual file path from context>",\n'
                                             '  "line": 1,\n'
                                             '  "repair_summary": "<concise fix summary>",\n'
-                                            '  "diff": "--- a/<file>\\n+++ b/<file>\\n@@ -1,1 +1,2 @@\\n+<fix>",\n'
+                                            '  "diff": "--- a/<actual_file>\\n+++ b/<actual_file>\\n@@ -<start>,<len> +<start>,<len> @@\\n <context>\\n+<fix>",\n'
                                             '  "confidence": 1.0\n'
                                             "}\n\n"
-                                            f"Investigation Context:\n{prompt[:1500]}"
+                                            f"Investigation Context:\n{prompt[:2500]}"
                                         )
                                     }
                                 ],

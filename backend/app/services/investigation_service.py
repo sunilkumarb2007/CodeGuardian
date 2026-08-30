@@ -138,8 +138,8 @@ class InvestigationService:
             engine = self.openrouter_engine
             
         if not engine:
-            self._emit_event(run_id, 304, "system", "Stub investigation started", "No AI provider configured.")
-            return self._create_stub_result(incident_id, attempt)
+            self._emit_event(run_id, 304, "system", "Investigation skipped", "No AI provider configured.")
+            return InvestigationResult(incident_id=incident_id, status="AI_PROVIDER_NOT_CONFIGURED")
             
         model_str = getattr(engine, "model_name", "configured model")
         self._emit_event(run_id, 304, "system", f"{engine.provider_name.capitalize()} investigation started", f"Sending bounded context to {engine.provider_name} ({model_str}).")
@@ -175,7 +175,7 @@ class InvestigationService:
             if "RATE_LIMIT" in err_msg or "QUOTA" in err_msg:
                 return InvestigationResult(incident_id=incident_id, status="RATE_LIMIT_EXCEEDED")
             if "INVESTIGATOR_NOT_CONFIGURED" in err_msg:
-                return self._create_stub_result(incident_id, attempt)
+                return InvestigationResult(incident_id=incident_id, status="AI_PROVIDER_NOT_CONFIGURED")
             if "AUTH_FAILED" in err_msg or "401" in err_msg or "403" in err_msg:
                 return InvestigationResult(incident_id=incident_id, status="AI_PROVIDER_ERROR")
             if "PROVIDER_ERROR" in err_msg or "500" in err_msg or "502" in err_msg or "503" in err_msg:

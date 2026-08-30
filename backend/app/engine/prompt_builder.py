@@ -86,10 +86,13 @@ class InvestigationPromptBuilder:
   "confidence": 1.0
 }}""")
         prompt.append("\nDirectives:")
-        prompt.append("- Do not invent a file name. Use only files present in the supplied source context.")
-        prompt.append("- Do not invent a service name. Derive it from the evidence.")
-        prompt.append("- Do not invent a line number. Derive it from the stack trace and source code.")
-        prompt.append("- Do not infer a repair from the template; derive it strictly from the actual defect.")
+        prompt.append("- Never invent a file name. Use only files present in the supplied source context.")
+        prompt.append("- Never invent a service name. Derive it strictly from the evidence.")
+        prompt.append("- Never invent a source location, line number, or symbol. Derive it from the stack trace and source code.")
+        prompt.append("- Never invent an endpoint, error, or stack trace.")
+        prompt.append("- Never infer a patch from an example or template; derive it strictly from the actual defect.")
+        prompt.append("- Use only supplied repository evidence.")
+        prompt.append("- If evidence is insufficient or no safe repair can be determined, return no_repair_available.")
         prompt.append("- Every changed file must be justified by the supplied source context.")
         prompt.append("- The unified diff must be complete, syntactically valid, and bounded to the affected file.")
 

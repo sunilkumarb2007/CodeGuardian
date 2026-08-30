@@ -3,10 +3,13 @@ export type StageStatus =
   | 'running'
   | 'passed'
   | 'failed'
+  | 'waiting'
   | 'waiting_for_approval'
   | 'rejected'
   | 'skipped'
   | 'completed'
+  | 'blocked'
+  | 'not_required'
 
 export type RunStatus =
   | 'queued'

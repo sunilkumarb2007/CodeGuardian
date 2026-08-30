@@ -201,17 +201,18 @@ export function IDESidebar({
                   s.name?.toLowerCase().replace(/[_\s]+/g, '') === stageItem.label.toLowerCase().replace(/[_\s]+/g, '')
               )
               
-              const isTerminalRun =
-                run?.status === 'completed' ||
+              const isCompletedRun = run?.status === 'completed'
+              const isTerminalFailure =
                 run?.status === 'failed' ||
                 run?.status === 'rejected' ||
                 run?.status === 'baseline_failure_not_reproduced'
 
-              const status = runStage?.status ?? (isTerminalRun ? 'passed' : 'pending')
+              const status = runStage?.status ?? (isCompletedRun ? 'passed' : isTerminalFailure ? 'blocked' : 'pending')
               const isPassed = status === 'passed' || status === 'completed' || status === 'skipped'
               const isFailed = status === 'failed' || status === 'rejected'
-              const isWaiting = status === 'waiting_for_approval'
-              const isRunning = !isTerminalRun && (status === 'running' || (run?.currentStage === stageBaseName && !isPassed && !isFailed && !isWaiting))
+              const isWaiting = status === 'waiting' || status === 'waiting_for_approval'
+              const isBlocked = status === 'blocked' || status === 'not_required'
+              const isRunning = !isCompletedRun && !isTerminalFailure && (status === 'running' || (run?.currentStage === stageBaseName && !isPassed && !isFailed && !isWaiting))
 
               const isSelected = activeSection === stageItem.section || activeSection.toLowerCase() === stageItem.label.toLowerCase()
 
@@ -248,6 +249,8 @@ export function IDESidebar({
                       </span>
                     ) : isFailed ? (
                       <span className="inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
+                    ) : isBlocked ? (
+                      <span className="inline-flex rounded-full h-2 w-2 bg-zinc-700" />
                     ) : (
                       <span className="inline-flex rounded-full h-2 w-2 border border-zinc-600" />
                     )}

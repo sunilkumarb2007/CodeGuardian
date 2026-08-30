@@ -87,9 +87,12 @@ const STATUS_STYLES: Record<StageStatus, { dot: string; label: string; text: str
   passed: { dot: 'bg-lime', label: 'PASSED', text: 'text-lime' },
   completed: { dot: 'bg-lime', label: 'COMPLETED', text: 'text-lime' },
   failed: { dot: 'bg-signal-pink', label: 'FAILED', text: 'text-signal-pink' },
+  waiting: { dot: 'bg-signal-orange', label: 'AWAITING APPROVAL', text: 'text-signal-orange' },
   waiting_for_approval: { dot: 'bg-signal-orange', label: 'AWAITING APPROVAL', text: 'text-signal-orange' },
   rejected: { dot: 'bg-signal-pink', label: 'REJECTED', text: 'text-signal-pink' },
   skipped: { dot: 'bg-ink-500', label: 'SKIPPED', text: 'text-ink-400' },
+  blocked: { dot: 'bg-ink-600', label: 'BLOCKED', text: 'text-ink-500' },
+  not_required: { dot: 'bg-ink-600', label: 'NOT REQUIRED', text: 'text-ink-500' },
 }
 
 export function StatusBadge({ status, label }: { status: StageStatus; label?: string }) {

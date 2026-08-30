@@ -83,7 +83,7 @@ def execute_single_run(run_id: str):
         incident = db.query(Incident).filter(Incident.id == run.incident_id).first() if run.incident_id else None
         evidence = db.query(EvidenceEvent).filter(EvidenceEvent.incident_id == incident.id).first() if incident else None
 
-        repo_url = "https://github.com/sunilkumarb2007/JavaAPICheck"
+        repo_url = None
         if incident and hasattr(incident, 'repository') and incident.repository:
             repo_url = incident.repository.repository_url
         elif run.repository and hasattr(run.repository, 'repository_url'):
@@ -95,8 +95,8 @@ def execute_single_run(run_id: str):
                 "failure_type": evidence.event_type or "RUNTIME_EXCEPTION",
                 "message": evidence.error_message or "",
                 "stack_trace": evidence.stack_trace or "",
-                "service": evidence.service_name or "payment-service",
-                "exception": evidence.error_code or "NullPointerException",
+                "service": evidence.service_name or "unknown-service",
+                "exception": evidence.error_code or "RUNTIME_EXCEPTION",
             }
 
     try:

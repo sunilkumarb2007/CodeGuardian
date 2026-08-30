@@ -20,10 +20,10 @@ export interface ResolvedRunPresentation {
 }
 
 export function deriveRepositoryName(urlOrName?: string): string {
-  if (!urlOrName) return 'JavaAPICheck'
+  if (!urlOrName) return 'Repository'
   const clean = urlOrName.trim().replace(/\/+$/, '')
   const lastPart = clean.split('/').pop()?.replace(/\.git$/, '')
-  return lastPart || clean || 'JavaAPICheck'
+  return lastPart || clean || 'Repository'
 }
 
 export function resolveRunPresentation(run?: Run): ResolvedRunPresentation {
