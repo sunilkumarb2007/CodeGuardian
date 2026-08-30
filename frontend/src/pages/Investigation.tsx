@@ -11,6 +11,7 @@ import { IDEStatusBar } from '../components/workspace/IDEStatusBar'
 import { TraceOverviewPanel } from '../components/workspace/TraceOverviewPanel'
 import { AutoFixAgentPanel } from '../components/workspace/AutoFixAgentPanel'
 import { IDESourceWorkspace } from '../components/workspace/IDESourceWorkspace'
+import { RepairReceiptModal } from '../components/workspace/RepairReceiptModal'
 
 import {
   EvidencePanel,
@@ -63,6 +64,7 @@ export default function Investigation() {
   const [activeSection, setActiveSection] = useState<WorkspaceSection>('Overview')
   const [activeTab, setActiveTab] = useState<TabType>('Trace Overview')
   const [isSourceFullScreen, setIsSourceFullScreen] = useState(false)
+  const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false)
 
   const isHealthyRun =
     run?.status === 'baseline_failure_not_reproduced' ||
@@ -183,8 +185,9 @@ export default function Investigation() {
       <IDEHeader
         run={run}
         runId={runId}
-        isFullScreen={isSourceFullScreen}
         onToggleFullScreen={() => setIsSourceFullScreen(!isSourceFullScreen)}
+        isFullScreen={isSourceFullScreen}
+        onOpenReceipt={() => setIsReceiptModalOpen(true)}
       />
 
       {/* Error Banner if API failed */}
@@ -517,7 +520,9 @@ export default function Investigation() {
           <AutoFixAgentPanel
             run={run}
             onQuickAction={(action) => {
-              if (action === 'overview') {
+              if (action === 'receipt') {
+                setIsReceiptModalOpen(true)
+              } else if (action === 'overview') {
                 handleNavigateSection('overview')
               } else if (action === 'investigation') {
                 handleNavigateSection('investigation')
@@ -538,6 +543,13 @@ export default function Investigation() {
 
       {/* 3. Execution Status Bar (Bottom) */}
       <IDEStatusBar run={run} runId={runId} />
+
+      {/* 4. Authoritative Repair Receipt Modal */}
+      <RepairReceiptModal
+        isOpen={isReceiptModalOpen}
+        onClose={() => setIsReceiptModalOpen(false)}
+        runId={runId}
+      />
     </div>
   )
 }

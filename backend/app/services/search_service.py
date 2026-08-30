@@ -143,8 +143,8 @@ class SearchService:
                     "relevance": 2 if q_lower in (inc.error_fingerprint or "").lower() else 4
                 })
 
-        # 3. Search Failure Memory
-        if search_type in ["all", "memory"]:
+        # 3. Search Failure Memory & Repair Receipts
+        if search_type in ["all", "memory", "receipt"]:
             mem_query = self.db.query(FailureMemory).filter(
                 or_(
                     FailureMemory.error_pattern.ilike(f"%{q_lower}%"),
@@ -154,11 +154,11 @@ class SearchService:
             ).limit(10).all()
             for mem in mem_query:
                 results.append({
-                    "type": "memory",
+                    "type": "receipt",
                     "id": str(mem.id),
-                    "title": "Historical Repair",
-                    "subtitle": mem.error_pattern[:50] + "...",
-                    "relevance": 3
+                    "title": f"Repair Receipt · {mem.error_fingerprint or 'Verified Fix'}",
+                    "subtitle": f"Root cause: {mem.root_cause[:50]}...",
+                    "relevance": 1 if q_lower in (mem.error_fingerprint or "").lower() else 3
                 })
 
         # Rank results

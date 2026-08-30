@@ -121,7 +121,54 @@ class WorkspaceService:
             RunState.VALIDATION_FAILED: "validation"
         }
         
-        current_ui_stage = state_to_stage.get(run.state, "repository")
+        # Resolve current UI stage accurately
+        current_ui_stage = None
+        if run.current_stage:
+            stage_str = str(run.current_stage).lower()
+            for s, _ in STAGES_CONFIG:
+                if s == stage_str or s in stage_str:
+                    current_ui_stage = s
+                    break
+        
+        if not current_ui_stage:
+            current_ui_stage = state_to_stage.get(run.state)
+            if not current_ui_stage:
+                try:
+                    current_ui_stage = state_to_stage.get(RunState(run.state))
+                except Exception:
+                    pass
+
+        # Terminal failure check
+        is_no_failure = run.state in [RunState.NO_FAILURE_EVIDENCE, "NO_FAILURE_EVIDENCE", "NO_FAILURE_FOUND"]
+        is_failed = not is_no_failure and (
+            run.state in [
+                RunState.REPOSITORY_NOT_FOUND,
+                RunState.INVESTIGATION_FAILED, RunState.INVESTIGATION_TIMEOUT, RunState.INVESTIGATION_SCHEMA_ERROR,
+                RunState.PATCH_GENERATION_FAILED, RunState.PATCH_CONTEXT_INVALID, RunState.PATCH_PATH_UNSAFE,
+                RunState.PATCH_LANGUAGE_MISMATCH, RunState.PATCH_APPLY_FAILED,
+                RunState.BASELINE_FAILURE_NOT_REPRODUCED, RunState.REPAIR_EXHAUSTED, RunState.DELIVERY_AUTH_REQUIRED,
+                RunState.DELIVERY_FAILED, RunState.REJECTED, RunState.BUILD_FAILED, RunState.TESTS_FAILED,
+                RunState.REPLAY_FAILED, RunState.VALIDATION_FAILED, "FAILED", "REJECTED"
+            ] or bool(run.error_code or (run.error_message and run.state != RunState.COMPLETED))
+        )
+
+        if is_failed:
+            err_text = f"{run.error_code or ''} {run.error_message or ''}".lower()
+            if "delivery" in err_text or "unvalidated" in err_text or run.state in [RunState.DELIVERY_FAILED, RunState.DELIVERY_AUTH_REQUIRED]:
+                current_ui_stage = "delivery"
+            elif "validation" in err_text or run.state == RunState.VALIDATION_FAILED:
+                current_ui_stage = "validation"
+            elif "replay" in err_text or run.state == RunState.REPLAY_FAILED:
+                current_ui_stage = "replay"
+            elif "build" in err_text or run.state == RunState.BUILD_FAILED:
+                current_ui_stage = "build"
+            elif "test" in err_text or run.state == RunState.TESTS_FAILED:
+                current_ui_stage = "tests"
+            elif any(k in err_text for k in ["investigation", "timeout", "truncated", "provider", "schema"]) or run.state in [RunState.INVESTIGATION_FAILED, RunState.INVESTIGATION_TIMEOUT]:
+                current_ui_stage = "investigation"
+
+        if not current_ui_stage:
+            current_ui_stage = "completed" if run.state == RunState.COMPLETED else "repository"
 
         for i, (stage, _) in enumerate(STAGES_CONFIG):
             if stage == current_ui_stage:
@@ -130,18 +177,6 @@ class WorkspaceService:
                 
         if current_ui_stage == "completed":
             current_idx = len(STAGES_CONFIG)
-        
-        # terminal failure check
-        is_no_failure = run.state in [RunState.NO_FAILURE_EVIDENCE, "NO_FAILURE_EVIDENCE", "NO_FAILURE_FOUND"]
-        is_failed = not is_no_failure and run.state in [
-            RunState.REPOSITORY_NOT_FOUND,
-            RunState.INVESTIGATION_FAILED, RunState.INVESTIGATION_TIMEOUT, RunState.INVESTIGATION_SCHEMA_ERROR,
-            RunState.PATCH_GENERATION_FAILED, RunState.PATCH_CONTEXT_INVALID, RunState.PATCH_PATH_UNSAFE,
-            RunState.PATCH_LANGUAGE_MISMATCH, RunState.PATCH_APPLY_FAILED,
-            RunState.BASELINE_FAILURE_NOT_REPRODUCED, RunState.REPAIR_EXHAUSTED, RunState.DELIVERY_AUTH_REQUIRED,
-            RunState.DELIVERY_FAILED, RunState.REJECTED, RunState.BUILD_FAILED, RunState.TESTS_FAILED,
-            RunState.REPLAY_FAILED, RunState.VALIDATION_FAILED, "FAILED", "REJECTED"
-        ]
 
         stages = {}
         for i, (stage, _) in enumerate(STAGES_CONFIG):
@@ -168,7 +203,7 @@ class WorkspaceService:
         if run.state == RunState.WAITING_FOR_APPROVAL:
             stages["approval"] = "waiting"
             
-        stages["completed"] = "passed" if run.state == RunState.COMPLETED else "pending"
+        stages["completed"] = "passed" if run.state == RunState.COMPLETED else ("not_required" if is_no_failure else "pending")
 
         decisions = {
             a.action_id: (a.response_data or {}).get("status")

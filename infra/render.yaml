@@ -42,16 +42,76 @@ services:
         sync: false
       - key: SARVAM_MODEL
         value: sarvam-105b
-      - key: GITHUB_TOKEN
+      - key: GITHUB_APP_ID
+        value: "4763885"
+      - key: GITHUB_APP_PRIVATE_KEY
         sync: false
+      - key: GITHUB_WEBHOOK_SECRET
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: ALERT_EMAIL
+        value: sunilkumarb200703@gmail.com
+      - key: SENDER_EMAIL
+        value: onboarding@resend.dev
+      - key: FRONTEND_URL
+        fromService:
+          type: web
+          name: codeguardian-web
+          property: host
       - key: FRONTEND_ORIGIN
         fromService:
           type: web
           name: codeguardian-web
           property: host
+      - key: APPROVAL_TOKEN_SECRET
+        sync: false
+
+  # 3. Dedicated Background Worker: 17-Stage Long-Running Pipeline Execution
+  - type: worker
+    name: codeguardian-worker
+    runtime: docker
+    dockerContext: backend
+    dockerfilePath: backend/Dockerfile
+    dockerCommand: python -m app.worker
+    plan: starter
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: codeguardian-db
+          property: connectionString
+      - key: APP_ENV
+        value: production
+      - key: DEBUG
+        value: false
+      - key: AI_PROVIDER
+        value: sarvam
+      - key: SARVAM_API_KEY
+        sync: false
+      - key: SARVAM_MODEL
+        value: sarvam-105b
+      - key: GITHUB_APP_ID
+        value: "4763885"
+      - key: GITHUB_APP_PRIVATE_KEY
+        sync: false
+      - key: GITHUB_WEBHOOK_SECRET
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: ALERT_EMAIL
+        value: sunilkumarb200703@gmail.com
+      - key: SENDER_EMAIL
+        value: onboarding@resend.dev
+      - key: FRONTEND_URL
+        fromService:
+          type: web
+          name: codeguardian-web
+          property: host
+      - key: APPROVAL_TOKEN_SECRET
+        sync: false
 
 databases:
-  # 3. Database: PostgreSQL Durable Storage
+  # 4. Database: PostgreSQL Authoritative Storage
   - name: codeguardian-db
     databaseName: codeguardian_db
     user: codeguardian

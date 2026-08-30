@@ -9,9 +9,10 @@ interface IDEHeaderProps {
   runId: string
   onToggleFullScreen?: () => void
   isFullScreen?: boolean
+  onOpenReceipt?: () => void
 }
 
-export function IDEHeader({ run, runId, onToggleFullScreen, isFullScreen }: IDEHeaderProps) {
+export function IDEHeader({ run, runId, onToggleFullScreen, isFullScreen, onOpenReceipt }: IDEHeaderProps) {
   const [showRepoMenu, setShowRepoMenu] = useState(false)
 
   const presentation = resolveRunPresentation(run)
@@ -83,8 +84,21 @@ export function IDEHeader({ run, runId, onToggleFullScreen, isFullScreen }: IDEH
         </span>
       </div>
 
-      {/* Right: Run ID + New Investigation + Interactive Icons */}
+      {/* Right: Run ID + Repair Receipt + New Investigation + Interactive Icons */}
       <div className="flex items-center gap-3">
+        {onOpenReceipt && (
+          <button
+            type="button"
+            onClick={onOpenReceipt}
+            className="flex items-center gap-1.5 rounded-lg border border-lime/40 bg-lime/10 px-3 py-1.5 text-xs font-mono font-bold text-lime hover:bg-lime/20 transition-colors shadow-sm"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Repair Receipt
+          </button>
+        )}
+
         <span className="hidden md:inline font-mono text-xs text-zinc-400">
           run {runId ? `${runId.slice(0, 8)}-${runId.slice(8, 12)}-${runId.slice(12, 16)}...` : '710b892e-766-c4b...'}
         </span>

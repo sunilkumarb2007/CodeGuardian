@@ -285,7 +285,7 @@ class DeliveryService:
         self.db = db
         self.incident_repo = IncidentRepository(db)
         self.patch_repo = PatchRepository(db)
-        from app.db.repositories import PullRequestRepository
+        self.val_run_repo = ValidationRunRepository(db)
         self.pr_repo = PullRequestRepository(db)
 
     def run_delivery(self, incident_id: UUID, patch_id: UUID, repository_url: str = None) -> PullRequestDeliveryResponse:
@@ -317,7 +317,11 @@ class DeliveryService:
             raise ValueError(f"Patch {patch_id} does not belong to incident {incident_id}")
 
         if patch.status != "validated":
-            raise ValueError(f"UNVALIDATED_PATCH_CANNOT_BE_DELIVERED: Patch status is {patch.status}")
+            raise ValueError(f"DELIVERY_BLOCKED: Patch {patch_id} status is '{patch.status}', must be 'validated'. Unvalidated patches cannot be delivered.")
+
+        val_run = self.val_run_repo.get_by_patch_id(patch_id)
+        if val_run and not val_run.repair_verified and val_run.status != "passed":
+            raise ValueError(f"DELIVERY_BLOCKED: Validation run for patch {patch_id} did not pass verification (status: '{val_run.status}').")
 
         self._verify_patch_safety(patch)
 

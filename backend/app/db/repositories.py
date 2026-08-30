@@ -156,6 +156,9 @@ class ValidationRunRepository(BaseRepository[models.ValidationRun]):
     def __init__(self, db: Session):
         super().__init__(db, models.ValidationRun)
 
+    def get_by_patch_id(self, patch_id: UUID) -> Optional[models.ValidationRun]:
+        return self.db.query(models.ValidationRun).filter(models.ValidationRun.patch_id == patch_id).order_by(models.ValidationRun.created_at.desc()).first()
+
 class RepairAttemptRepository(BaseRepository[models.RepairAttempt]):
     def __init__(self, db: Session):
         super().__init__(db, models.RepairAttempt)

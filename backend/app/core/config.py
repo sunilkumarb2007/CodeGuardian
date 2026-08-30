@@ -22,7 +22,11 @@ class Settings(BaseSettings):
     github_app_private_key_path: str | None = None
     github_webhook_secret: str | None = None
     frontend_origin: str | None = None
-    frontend_url: str | None = None
+    frontend_url: str | None = "http://localhost:5173"
+    resend_api_key: str | None = None
+    alert_email: str | None = "sunilkumarb200703@gmail.com"
+    sender_email: str = "onboarding@resend.dev"
+    approval_token_secret: str | None = None
 
     openrouter_api_key: str | None = None
     openrouter_model: str = "poolside/laguna-s-2.1:free"

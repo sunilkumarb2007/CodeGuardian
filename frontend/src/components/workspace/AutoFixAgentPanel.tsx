@@ -574,13 +574,23 @@ export function AutoFixAgentPanel({
             <>
               <button
                 type="button"
+                onClick={() => onQuickAction?.('receipt')}
+                className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg border border-lime/40 bg-lime/10 text-lime hover:bg-lime/20 transition-colors font-bold"
+              >
+                <svg className="h-3.5 w-3.5 text-lime" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <span className="text-[11px] truncate">Repair Receipt</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => onQuickAction?.('delivery')}
                 className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg border border-ide-divider bg-ide-panel text-zinc-300 hover:text-white hover:border-white/[0.2] transition-colors"
               >
-                <svg className="h-3.5 w-3.5 text-lime" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="h-3.5 w-3.5 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                 </svg>
-                <span className="text-[11px] truncate">View Pull Request</span>
+                <span className="text-[11px] truncate">View Delivery</span>
               </button>
               <button
                 type="button"
@@ -591,16 +601,6 @@ export function AutoFixAgentPanel({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
                 </svg>
                 <span className="text-[11px] truncate">View Patch</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => onQuickAction?.('replay')}
-                className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg border border-ide-divider bg-ide-panel text-zinc-300 hover:text-white hover:border-white/[0.2] transition-colors"
-              >
-                <svg className="h-3.5 w-3.5 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                </svg>
-                <span className="text-[11px] truncate">View Replay</span>
               </button>
               <button
                 type="button"

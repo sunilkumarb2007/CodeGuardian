@@ -8,3 +8,7 @@ python-dotenv
 httpx
 google-genai
 redis
+resend
+pyjwt
+cryptography
+pytest
