@@ -43,17 +43,21 @@ class CommandPolicy:
                 if danger in token:
                     raise ValueError(f"COMMAND_REJECTED: Dangerous token '{danger}' detected in command arguments.")
                     
-        # 2. Reject directory traversal in arguments (except allowed workspace roots)
-        for token in command[1:]:
-            if ".." in token:
-                raise ValueError(f"COMMAND_REJECTED: Directory traversals are not allowed: {token}")
-
         raw_exec = command[0]
         # Normalize executable name
         clean_exec = raw_exec.replace("./", "").replace(".\\", "")
         executable = os.path.basename(clean_exec).lower()
         if executable.endswith(".exe"):
             executable = executable[:-4]
+
+        is_git = (architecture_build_system == "git" or executable in cls.ALLOWED_GIT)
+
+        # 2. Reject directory traversal or absolute paths in arguments (except git clone targets)
+        for token in command[1:]:
+            if ".." in token:
+                raise ValueError(f"COMMAND_REJECTED: Directory traversals are not allowed: {token}")
+            if not is_git and (token.startswith("/") or token.startswith("\\") or os.path.isabs(token) or (len(token) > 2 and token[1] == ":")):
+                raise ValueError(f"COMMAND_REJECTED: Absolute path references are not allowed: {token}")
             
         # Allow shell wrappers (bash, sh) when running a trusted repo wrapper script
         if executable in cls.ALLOWED_SHELL:

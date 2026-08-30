@@ -39,7 +39,7 @@ def test_validation_engine_patch_context_mismatch():
     
     patch = Patch(
         id=uuid.uuid4(),
-        diff="--- a\n+++ b\n@@ -1,1 +1,1 @@\n- foo\n+ bar",
+        diff="",
         affected_files=["src/payment_service.py"]
     )
     

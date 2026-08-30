@@ -27,8 +27,13 @@ def start_orchestration(req: OrchestrationRequest, background_tasks: BackgroundT
     if req.failure_input:
         # Pre-validate structure
         fi = dict(req.failure_input)
-        failure_type = fi.get("failure_type") or fi.get("error_code")
-        message = fi.get("message") or fi.get("error_pattern")
+        failure_type = fi.get("failure_type") or fi.get("error_code") or fi.get("type") or fi.get("exception")
+        message = (
+            fi.get("message")
+            or fi.get("error_pattern")
+            or fi.get("error_message")
+            or (fi.get("stack_trace", "").split("\n")[0] if fi.get("stack_trace") else None)
+        )
         source = fi.get("source") or "RUNTIME"
         timestamp = fi.get("timestamp") or datetime.now(timezone.utc).isoformat()
 

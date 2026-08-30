@@ -199,6 +199,10 @@ class InvestigationService:
         if result.patch_candidate:
             allowed_paths = allowed_paths_precomputed
             normalized_files = []
+            if not result.patch_candidate.files_changed:
+                logger.error("PATCH_EMPTY: Patch candidate specifies 0 changed files.")
+                return InvestigationResult(incident_id=incident_id, status="PATCH_EMPTY")
+
             for file in result.patch_candidate.files_changed:
                 if ".." in file or file.startswith("/") or file.startswith("\\"):
                     logger.error(f"PATCH_PATH_UNSAFE: absolute or traversal paths not allowed: {file}")
@@ -214,6 +218,16 @@ class InvestigationService:
                         logger.error(f"PATCH_CONTEXT_INVALID: file not in repository: {file}")
                         return InvestigationResult(incident_id=incident_id, status="PATCH_CONTEXT_INVALID")
             result.patch_candidate.files_changed = normalized_files
+
+            # Causal consistency verification: root cause target vs patch target
+            if result.root_cause and result.root_cause.affected_file:
+                rc_file = result.root_cause.affected_file.split("/")[-1].replace("\\", "/")
+                rc_stem = rc_file.split(".")[0].lower()
+                patch_matches = any(rc_stem in pf.lower() for pf in normalized_files)
+                if not patch_matches and not any(result.root_cause.service.lower() in pf.lower() for pf in normalized_files if result.root_cause.service != "unknown"):
+                    logger.error(f"PATCH_ROOT_CAUSE_MISMATCH: root cause affected {result.root_cause.affected_file} but patch targets {normalized_files}")
+                    return InvestigationResult(incident_id=incident_id, status="PATCH_ROOT_CAUSE_MISMATCH")
+
             self._emit_event(run_id, 308, "system", "Patch candidate generated", f"Modified {len(result.patch_candidate.files_changed)} files.")
         
         # 5. Persist
@@ -221,98 +235,12 @@ class InvestigationService:
         return result
 
     def _create_stub_result(self, incident_id: UUID, attempt: int = 1) -> InvestigationResult:
-        logger.info(f"Using stub investigation result (Attempt {attempt})")
-        from app.schemas.investigation import RootCauseAnalysis, HistoricalReference, PatchCandidateModel
-        
-        # Valid Java patch — 4-file coordinated fix for PaymentService NPE
-        result = InvestigationResult(
+        logger.warning(f"AI provider not configured for incident {incident_id} (Attempt {attempt})")
+        return InvestigationResult(
             incident_id=incident_id,
-            status="completed",
-            root_cause=RootCauseAnalysis(
-                service="payment-service",
-                summary="NullPointerException: merchant object is null when findByMerchantCode returns null for unknown merchant code",
-                    affected_file="payment-service/src/main/java/com/codeguardian/paymentservice/PaymentService.java"
-                ),
-                historical_reference=HistoricalReference(
-                    found=True,
-                    memory_status="verified",
-                    applicability="direct_match"
-                ),
-                patch_candidate=PatchCandidateModel(
-                    status="unvalidated",
-                    files_changed=[
-                        "payment-service/src/main/java/com/codeguardian/paymentservice/PaymentService.java",
-                        "payment-service/src/test/java/com/codeguardian/paymentservice/PaymentPatchRegressionTest.java",
-                        "payment-service/src/test/java/com/codeguardian/paymentservice/PaymentServiceUnitTest.java",
-                        "payment-service/src/test/java/com/codeguardian/paymentservice/PaymentServiceApplicationTests.java"
-                    ],
-                    diff="""--- a/payment-service/src/main/java/com/codeguardian/paymentservice/PaymentService.java
-+++ b/payment-service/src/main/java/com/codeguardian/paymentservice/PaymentService.java
-@@ -18,9 +18,9 @@
-         // Find merchant by code
-         Merchant merchant = merchantRepository.findByMerchantCode(request.merchantCode());
- 
--        // INTENTIONAL DEFECT: Assuming merchant is always found and non-null.
--        // If findByMerchantCode returns null (e.g. for ORDER 5001 / unknown merchant),
--        // dereferencing merchant.isActive() throws a NullPointerException.
--        if (!merchant.isActive()) {
-+        if (merchant == null) {
-+            throw new IllegalStateException("Merchant not found for code: " + request.merchantCode());
-+        }
-+        if (!merchant.isActive()) {
-             throw new IllegalStateException("Merchant is not active");
-         }
---- a/payment-service/src/test/java/com/codeguardian/paymentservice/PaymentPatchRegressionTest.java
-+++ b/payment-service/src/test/java/com/codeguardian/paymentservice/PaymentPatchRegressionTest.java
-@@ -1,12 +1,10 @@
- package com.codeguardian.paymentservice;
- 
--import org.junit.jupiter.api.Disabled;
- import org.junit.jupiter.api.Test;
- import org.springframework.beans.factory.annotation.Autowired;
- import org.springframework.boot.test.context.SpringBootTest;
- 
- import static org.assertj.core.api.Assertions.assertThat;
- 
--@Disabled("Enable after CodeGuardian adds the null check patch.")
- @SpringBootTest
- class PaymentPatchRegressionTest {
-@@ -18,6 +16,6 @@
-     @Test
-     void knownBugOrderShouldReturnSuccessAfterPatch() {
--        CheckoutResponse response = paymentProcessingService.charge(new CheckoutRequest(101L, 5001L, 499.0));
-+        CheckoutResponse response = paymentProcessingService.charge(new CheckoutRequest(101L, 5002L, 499.0));
-         assertThat(response.status()).isEqualTo("SUCCESS");
-     }
---- a/payment-service/src/test/java/com/codeguardian/paymentservice/PaymentServiceUnitTest.java
-+++ b/payment-service/src/test/java/com/codeguardian/paymentservice/PaymentServiceUnitTest.java
-@@ -29,7 +29,8 @@
-         CheckoutRequest request = new CheckoutRequest(101L, 5001L, 499.0, "MCH-UNKNOWN");
- 
--        // The baseline unpatched code throws NullPointerException
-+        // After null-check patch: ISE is thrown instead of NPE
-         assertThatThrownBy(() -> paymentService.processPayment(request))
--                .isInstanceOf(NullPointerException.class);
-+                .isInstanceOf(IllegalStateException.class)
-+                .hasMessageContaining("Merchant not found");
-     }
---- a/payment-service/src/test/java/com/codeguardian/paymentservice/PaymentServiceApplicationTests.java
-+++ b/payment-service/src/test/java/com/codeguardian/paymentservice/PaymentServiceApplicationTests.java
-@@ -54,4 +54,4 @@
--                .andExpect(status().isInternalServerError())
--                .andExpect(jsonPath("$.errorCode").value("NULL_OBJECT_ACCESS"))
-+                .andExpect(status().isBadRequest())
-+                .andExpect(jsonPath("$.errorCode").value("INACTIVE_MERCHANT"))
-                 .andExpect(jsonPath("$.service").value("payment-service"))
-                 .andExpect(jsonPath("$.source.file").value("PaymentService.java"));
-""",
-                    explanation="4-file patch: (1) null-check in PaymentService stops NPE, (2) regression test uses known merchant 5002L->MCH-5002, (3) unit test updated to expect ISE not NPE, (4) integration test updated to expect 400 INACTIVE_MERCHANT not 500 NULL_OBJECT_ACCESS."
-                ),
-                verification_requirements=["Build payment-service", "Run regression tests", "Replay the original failure"]
-            )
-
-        self._persist_investigation(incident_id, result, None, attempt)
-        return result
+            status="AI_PROVIDER_NOT_CONFIGURED",
+            verification_requirements=["Configure SARVAM_API_KEY or OPENROUTER_API_KEY to enable automated investigation."]
+        )
 
     def _persist_investigation(self, incident_id: UUID, result: InvestigationResult, trace_id: UUID | None, attempt: int = 1, engine=None):
         model_provider = engine.provider_name if engine else "stub"

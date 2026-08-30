@@ -272,14 +272,14 @@ class NotificationService:
             approve_url = f"{frontend_base}/approve/{run_id}?action=approve&token={action_token}"
             reject_url = f"{frontend_base}/approve/{run_id}?action=reject&token={action_token}"
 
-            repo_name = repo.name if repo else "JavaAPICheck"
-            service_name = (incident.root_cause_service if incident else None) or "payment-service"
+            repo_name = repo.name if repo else "Repository"
+            service_name = (incident.root_cause_service if incident else None) or (incident.symptom_service if incident else "service")
             environment = "production"
-            error_msg = (incident.title if incident else None) or "NullPointerException in PaymentService"
-            root_cause = (patch.generation_reason if patch else None) or (incident.root_cause_summary if incident else "Missing defensive null check")
+            error_msg = (incident.title if incident else None) or "Automated Incident"
+            root_cause = (patch.generation_reason if patch else None) or (incident.root_cause_summary if incident else "Automated defect repair")
             
-            affected_file = patch.affected_files[0] if patch and patch.affected_files else "payment-service/src/main/java/com/codeguardian/paymentservice/PaymentService.java"
-            diff_snippet = patch.diff if patch and patch.diff else "+ if (merchant == null) throw new IllegalStateException();"
+            affected_file = patch.affected_files[0] if patch and patch.affected_files else "source"
+            diff_snippet = patch.diff if patch and patch.diff else "(unified diff)"
             diff_short = diff_snippet[:350] + ("..." if len(diff_snippet) > 350 else "")
 
             receipt_id = receipt.receipt_id if receipt else f"RCP-{run_id[:8].upper()}"

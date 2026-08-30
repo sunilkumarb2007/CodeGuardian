@@ -46,8 +46,6 @@ services:
         value: "4763885"
       - key: GITHUB_APP_PRIVATE_KEY
         sync: false
-      - key: GITHUB_TOKEN
-        sync: false
       - key: GITHUB_OWNER
         value: sunilkumarb2007
       - key: GITHUB_WEBHOOK_SECRET
@@ -97,8 +95,6 @@ services:
       - key: GITHUB_APP_ID
         value: "4763885"
       - key: GITHUB_APP_PRIVATE_KEY
-        sync: false
-      - key: GITHUB_TOKEN
         sync: false
       - key: GITHUB_OWNER
         value: sunilkumarb2007

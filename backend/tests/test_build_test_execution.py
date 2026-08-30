@@ -64,7 +64,7 @@ def test_3_exit_code_authoritative(tmp_path):
     cmd_svc = CommandExecutionService()
     script_file = tmp_path / "fake_build.py"
     script_file.write_text("import sys\nprint('BUILD SUCCESS')\nsys.exit(1)\n")
-    res = cmd_svc.execute_command([sys.executable, str(script_file)], cwd=str(tmp_path), architecture="python")
+    res = cmd_svc.execute_command([sys.executable, "fake_build.py"], cwd=str(tmp_path), architecture="python")
     assert res["exit_code"] == 1
     assert "BUILD SUCCESS" in res["stdout"]
 
@@ -78,8 +78,8 @@ def test_4_stale_output_isolated(tmp_path):
     f1.write_text("print('OUTPUT_ONE')\n")
     f2 = tmp_path / "f2.py"
     f2.write_text("print('OUTPUT_TWO')\n")
-    res1 = cmd_svc.execute_command([sys.executable, str(f1)], cwd=str(tmp_path), architecture="python")
-    res2 = cmd_svc.execute_command([sys.executable, str(f2)], cwd=str(tmp_path), architecture="python")
+    res1 = cmd_svc.execute_command([sys.executable, "f1.py"], cwd=str(tmp_path), architecture="python")
+    res2 = cmd_svc.execute_command([sys.executable, "f2.py"], cwd=str(tmp_path), architecture="python")
     
     assert res1["command_id"] != res2["command_id"]
     assert "OUTPUT_ONE" in res1["stdout"]
@@ -94,7 +94,7 @@ def test_5_test_timeout(tmp_path):
     cmd_svc = CommandExecutionService()
     script_file = tmp_path / "sleeper.py"
     script_file.write_text("import time\ntime.sleep(10)\n")
-    res = cmd_svc.execute_command([sys.executable, str(script_file)], cwd=str(tmp_path), timeout_seconds=1, architecture="python")
+    res = cmd_svc.execute_command([sys.executable, "sleeper.py"], cwd=str(tmp_path), timeout_seconds=1, architecture="python")
     assert res["timed_out"] is True
     assert res["exit_code"] == -1
 

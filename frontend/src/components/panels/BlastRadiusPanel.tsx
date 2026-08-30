@@ -10,18 +10,11 @@ export function BlastRadiusPanel({ impact }: { impact?: ImpactAnalysis }) {
   }
 
   const riskLevel = impact?.risk_level || 'LOW'
-  const changedFiles = impact?.changed_files || ['src/main/java/com/example/payment/service/PaymentService.java']
-  const callers = impact?.affected_callers || [
-    { caller: 'PaymentController.createPayment', file: 'PaymentController.java', line: 23, depth: 1 },
-    { caller: 'CheckoutService.executePayment', file: 'CheckoutService.java', line: 88, depth: 2 },
-  ]
-  const endpoints = impact?.affected_endpoints || ['POST /payments/charge', 'POST /api/v1/checkout']
-  const tests = impact?.affected_tests || [
-    'PaymentServiceTest.testSuccessfulPayment',
-    'PaymentControllerTest.testCreatePaymentEndpoint',
-    'PaymentRegressionGuardTest.testMissingMerchantReturns404',
-  ]
-  const dependencies = impact?.affected_dependencies || ['MerchantRepository', 'PostgreSQL']
+  const changedFiles = impact?.changed_files || []
+  const callers = impact?.affected_callers || []
+  const endpoints = impact?.affected_endpoints || []
+  const tests = impact?.affected_tests || []
+  const dependencies = impact?.affected_dependencies || []
 
   return (
     <div className="space-y-6">

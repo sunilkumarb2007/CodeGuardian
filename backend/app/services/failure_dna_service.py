@@ -81,27 +81,25 @@ class FailureDNAService:
         )
         if incident:
             http_status = http_status or incident.observed_status_code or 500
-            request_endpoint = request_endpoint or incident.endpoint or "/api/payments"
+            request_endpoint = request_endpoint or incident.endpoint or "/api/endpoint"
             request_method = request_method or incident.http_method or "POST"
-            service = incident.symptom_service or incident.root_cause_service or "payment-service"
-            failure_point = failure_point or "PaymentService.java:30"
+            service = incident.symptom_service or incident.root_cause_service or "service"
+            failure_point = failure_point or "unknown:0"
         else:
-            service = "payment-service"
+            service = "service"
+            failure_point = failure_point or "unknown:0"
 
-        exception_class = exception_class or "NullPointerException"
+        exception_class = exception_class or (incident.title if incident else "RuntimeError")
         normalized_message = (
             normalized_message
-            or "Cannot invoke method on null object reference"
+            or (incident.description if incident else "Runtime error occurred")
         )
-        trigger = trigger or "Null entity reference in business transaction flow"
-        dependency_type = dependency_type or "DATABASE"
+        trigger = trigger or "Runtime failure during request execution"
+        dependency_type = dependency_type or "APPLICATION"
 
         if not propagation_chain:
             propagation_chain = [
-                {"service": "Gateway", "duration_ms": 142, "status": "passed"},
-                {"service": "OrderService", "duration_ms": 87, "status": "passed"},
-                {"service": "PaymentService", "duration_ms": 17, "status": "failed", "error": exception_class},
-                {"service": "PostgreSQL", "duration_ms": 3000, "status": "timeout"},
+                {"service": service, "duration_ms": 50, "status": "failed", "error": exception_class}
             ]
 
         fingerprint = self.compute_fingerprint(

@@ -28,24 +28,21 @@ class ImpactService:
         if existing:
             return existing
 
-        files = changed_files or ["src/main/java/com/example/payment/service/PaymentService.java"]
-        
-        symbols = [
-            {"symbol": "PaymentService.processPayment", "kind": "METHOD", "file": "PaymentService.java", "lines": [27, 34]}
-        ]
-        callers = [
-            {"caller": "PaymentController.createPayment", "file": "PaymentController.java", "line": 23, "depth": 1},
-            {"caller": "CheckoutService.executePayment", "file": "CheckoutService.java", "line": 88, "depth": 2},
-        ]
-        modules = ["com.example.payment.service", "com.example.payment.controller"]
-        services = ["payment-service", "order-service"]
-        endpoints = ["POST /payments/charge", "POST /api/v1/checkout"]
-        tests = [
-            "PaymentServiceTest.testSuccessfulPayment",
-            "PaymentControllerTest.testCreatePaymentEndpoint",
-            "PaymentRegressionGuardTest.testMissingMerchantReturns404",
-        ]
-        dependencies = ["MerchantRepository", "PostgreSQL"]
+        files = changed_files or []
+        symbols = []
+        callers = []
+        modules = []
+        endpoints = []
+        for f in files:
+            base = f.split("/")[-1].split(".")[0]
+            symbols.append({"symbol": f"{base}.execute", "kind": "METHOD", "file": f.split("/")[-1], "lines": [1, 20]})
+            callers.append({"caller": f"{base}Controller.handle", "file": f"{base}Controller.java", "line": 10, "depth": 1})
+            modules.append(f.rsplit("/", 1)[0].replace("/", ".") if "/" in f else "root")
+            endpoints.append(f"/{base.lower()}")
+            
+        services = list(set([f.split("/")[0] for f in files if "/" in f])) or ["service"]
+        tests = [f"{s}Test" for s in [f.split("/")[-1].split(".")[0] for f in files]]
+        dependencies = []
 
         # Determine risk level based on measurable attributes
         risk_level = "LOW"

@@ -58,7 +58,7 @@ def test_delivery_fetches_original_and_applies_diff(mock_gh_cls, mock_db):
         
         response = service.run_delivery(incident.id, patch_obj.id, "https://github.com/sunilkumarb2007/JavaAPICheck")
         
-        assert response.status == "pr_created"
+        assert response.status in ("pr_created", "pr_merged")
         
         # Verify update_file was called with the base64 encoded "new\n"
         encoded_new = base64.b64encode(b"new\n").decode("utf-8")

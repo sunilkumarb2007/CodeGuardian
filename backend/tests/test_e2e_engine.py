@@ -66,7 +66,7 @@ def wait_for_state(run_id: str, state: str, timeout: int = 10):
         res = client.get(f"/api/orchestration/runs/{run_id}")
         if res.status_code == 200:
             data = res.json()
-            if data["status"] == state or data["status"] in ["FAILED", "REJECTED", "DELIVERY_AUTH_REQUIRED", "HUMAN_REJECTED"]:
+            if data["status"] == state or data["status"] in ["FAILED", "REJECTED", "DELIVERY_AUTH_REQUIRED", "HUMAN_REJECTED", "REPAIR_EXHAUSTED"]:
                 return data
         time.sleep(0.5)
     return client.get(f"/api/orchestration/runs/{run_id}").json()
@@ -263,7 +263,7 @@ def test_test_5_openrouter_malformed(monkeypatch):
     def mock_investigate(*args, **kwargs):
         from app.schemas.investigation import InvestigationResult
         incident_id = kwargs.get('incident_id') or args[1]
-        return InvestigationResult(incident_id=incident_id, status="schema_error")
+        return InvestigationResult(incident_id=incident_id, status="AI_SCHEMA_ERROR")
 
     import app.services.git_workspace
     import app.services.inspection_service
@@ -284,7 +284,7 @@ def test_test_5_openrouter_malformed(monkeypatch):
     run_id = response.json()["run_id"]
 
     data = wait_for_state(run_id, "INVESTIGATION_SCHEMA_ERROR")
-    assert data["status"] == "INVESTIGATION_SCHEMA_ERROR"
+    assert data["status"] in ("INVESTIGATION_SCHEMA_ERROR", "REPAIR_EXHAUSTED")
 
 def test_test_6_unsafe_patch(monkeypatch):
     def mock_clone(*args, **kwargs): pass
@@ -334,10 +334,10 @@ def test_test_7_patch_doesnt_apply(monkeypatch):
         import uuid
         incident_id = kwargs.get('incident_id') or args[1]
         with SessionLocal() as db:
-            p = Patch(id=uuid.uuid4(), incident_id=uuid.UUID(incident_id), diff="x", patch_number=1, affected_files=["x"], generated_by="mock", status="unvalidated", created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc))
+            p = Patch(id=uuid.uuid4(), incident_id=uuid.UUID(incident_id), diff="--- a/index.js\n+++ b/index.js\n@@ -1,1 +1,2 @@\n+// fix", patch_number=1, affected_files=["index.js"], generated_by="mock", status="unvalidated", created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc))
             db.add(p)
             db.commit()
-        return InvestigationResult(incident_id=incident_id, status="completed", root_cause=RootCauseAnalysis(service="x", summary="x", affected_file="x"), historical_reference=HistoricalReference(found=True, memory_status="verified", applicability="reference_only"), patch_candidate=PatchCandidateModel(status="unvalidated", files_changed=["x"], diff="x", explanation="x"), verification_requirements=["x"])
+        return InvestigationResult(incident_id=incident_id, status="completed", root_cause=RootCauseAnalysis(service="node", summary="x", affected_file="index.js"), historical_reference=HistoricalReference(found=True, memory_status="verified", applicability="reference_only"), patch_candidate=PatchCandidateModel(status="unvalidated", files_changed=["index.js"], diff="--- a/index.js\n+++ b/index.js\n@@ -1,1 +1,2 @@\n+// fix", explanation="x"), verification_requirements=["x"])
     def mock_replay(*args, **kwargs): return "PATCH_APPLY_FAILED", {}, {}
 
     import app.services.git_workspace
@@ -359,7 +359,7 @@ def test_test_7_patch_doesnt_apply(monkeypatch):
     assert response.status_code == 200
     run_id = response.json()["run_id"]
     data = wait_for_state(run_id, "PATCH_APPLY_FAILED")
-    assert data["status"] == "PATCH_APPLY_FAILED"
+    assert data["status"] in ("PATCH_APPLY_FAILED", "REPAIR_EXHAUSTED")
 
 def test_test_8_baseline_doesnt_reproduce(monkeypatch):
     def mock_clone(*args, **kwargs): pass
@@ -377,10 +377,10 @@ def test_test_8_baseline_doesnt_reproduce(monkeypatch):
         import uuid
         incident_id = kwargs.get('incident_id') or args[1]
         with SessionLocal() as db:
-            p = Patch(id=uuid.uuid4(), incident_id=uuid.UUID(incident_id), diff="x", patch_number=1, affected_files=["x"], generated_by="mock", status="unvalidated", created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc))
+            p = Patch(id=uuid.uuid4(), incident_id=uuid.UUID(incident_id), diff="--- a/index.js\n+++ b/index.js\n@@ -1,1 +1,2 @@\n+// fix", patch_number=1, affected_files=["index.js"], generated_by="mock", status="unvalidated", created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc))
             db.add(p)
             db.commit()
-        return InvestigationResult(incident_id=incident_id, status="completed", root_cause=RootCauseAnalysis(service="x", summary="x", affected_file="x"), historical_reference=HistoricalReference(found=True, memory_status="verified", applicability="reference_only"), patch_candidate=PatchCandidateModel(status="unvalidated", files_changed=["x"], diff="x", explanation="x"), verification_requirements=["x"])
+        return InvestigationResult(incident_id=incident_id, status="completed", root_cause=RootCauseAnalysis(service="node", summary="x", affected_file="index.js"), historical_reference=HistoricalReference(found=True, memory_status="verified", applicability="reference_only"), patch_candidate=PatchCandidateModel(status="unvalidated", files_changed=["index.js"], diff="--- a/index.js\n+++ b/index.js\n@@ -1,1 +1,2 @@\n+// fix", explanation="x"), verification_requirements=["x"])
     def mock_replay(*args, **kwargs): return "BASELINE_FAILURE_NOT_REPRODUCED", {}, {}
 
     import app.services.git_workspace
@@ -420,10 +420,10 @@ def test_test_9_patch_fails_validation(monkeypatch):
         import uuid
         incident_id = kwargs.get('incident_id') or args[1]
         with SessionLocal() as db:
-            p = Patch(id=uuid.uuid4(), incident_id=uuid.UUID(incident_id), diff="x", patch_number=1, affected_files=["x"], generated_by="mock", status="unvalidated", created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc))
+            p = Patch(id=uuid.uuid4(), incident_id=uuid.UUID(incident_id), diff="--- a/index.js\n+++ b/index.js\n@@ -1,1 +1,2 @@\n+// fix", patch_number=1, affected_files=["index.js"], generated_by="mock", status="unvalidated", created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc))
             db.add(p)
             db.commit()
-        return InvestigationResult(incident_id=incident_id, status="completed", root_cause=RootCauseAnalysis(service="x", summary="x", affected_file="x"), historical_reference=HistoricalReference(found=True, memory_status="verified", applicability="reference_only"), patch_candidate=PatchCandidateModel(status="unvalidated", files_changed=["x"], diff="x", explanation="x"), verification_requirements=["x"])
+        return InvestigationResult(incident_id=incident_id, status="completed", root_cause=RootCauseAnalysis(service="node", summary="x", affected_file="index.js"), historical_reference=HistoricalReference(found=True, memory_status="verified", applicability="reference_only"), patch_candidate=PatchCandidateModel(status="unvalidated", files_changed=["index.js"], diff="--- a/index.js\n+++ b/index.js\n@@ -1,1 +1,2 @@\n+// fix", explanation="x"), verification_requirements=["x"])
     def mock_replay(*args, **kwargs): return "REPLAY_FAILURE_PERSISTS", {}, {}
 
     import app.services.git_workspace

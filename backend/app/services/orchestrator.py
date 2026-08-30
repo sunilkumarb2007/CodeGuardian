@@ -349,6 +349,32 @@ class CodeGuardianOrchestrator:
                             if attempt < max_attempts:
                                 continue
                             return
+                        elif inv_result.status == "PATCH_ROOT_CAUSE_MISMATCH":
+                            prior_failure_evidence.append({
+                                 "attempt": attempt,
+                                 "stage": "PATCH_VALIDATION",
+                                 "error": "Patch candidate modified files unrelated to the root cause. Patch must directly target the failing component."
+                            })
+                            emit_event("ANALYSIS", f"Patch root cause mismatch on attempt {attempt}. Target file does not match root cause location.")
+                            machine.transition_to(RunState.PATCH_GENERATED)
+                            machine.transition_to(RunState.PATCH_CONTEXT_INVALID)
+                            update_run_state(RunState.PATCH_CONTEXT_INVALID, error_code="PATCH_ROOT_CAUSE_MISMATCH", error_msg="Patch modified files unrelated to identified root cause")
+                            if attempt < max_attempts:
+                                continue
+                            return
+                        elif inv_result.status == "PATCH_EMPTY":
+                            prior_failure_evidence.append({
+                                 "attempt": attempt,
+                                 "stage": "PATCH_VALIDATION",
+                                 "error": "Patch candidate contained no changed files. A valid unified diff modifying at least one source file is required."
+                            })
+                            emit_event("ANALYSIS", f"Empty patch candidate on attempt {attempt}.")
+                            machine.transition_to(RunState.PATCH_GENERATED)
+                            machine.transition_to(RunState.PATCH_CONTEXT_INVALID)
+                            update_run_state(RunState.PATCH_CONTEXT_INVALID, error_code="PATCH_EMPTY", error_msg="Empty patch candidate generated")
+                            if attempt < max_attempts:
+                                continue
+                            return
                         elif inv_result.status in ("AI_PROVIDER_ERROR", "AI_INVALID_RESPONSE", "RATE_LIMIT_EXCEEDED") or "OPENROUTER" in inv_result.status:
                             machine.transition_to(RunState.INVESTIGATION_FAILED)
                             update_run_state(RunState.INVESTIGATION_FAILED, error_code=inv_result.status, error_msg=f"Provider error: {inv_result.status}")
@@ -509,16 +535,8 @@ class CodeGuardianOrchestrator:
                     last_err = last_ev.get('error', 'Validation bounds exceeded without viable patch candidate')
                     last_cat = last_ev.get('category') or last_stage + "_FAILED"
 
-                    if last_stage == "TEST_EXECUTION":
-                        machine.force_fail(RunState.TESTS_FAILED, f"Tests failed: {last_err[:300]}")
-                        update_run_state(RunState.TESTS_FAILED, error_code=last_cat, error_msg=f"Tests failed after {max_attempts} attempts: {last_err[:500]}")
-                    elif last_stage == "BUILD":
-                        machine.force_fail(RunState.BUILD_FAILED, f"Build failed: {last_err[:300]}")
-                        update_run_state(RunState.BUILD_FAILED, error_code="BUILD_FAILED", error_msg=f"Build failed after {max_attempts} attempts: {last_err[:500]}")
-                    else:
-                        machine.transition_to(RunState.REPAIR_EXHAUSTED)
-                        update_run_state(RunState.REPAIR_EXHAUSTED, error_code="REPAIR_EXHAUSTED", error_msg=f"Repair exhausted: {last_err[:500]}")
-                    
+                    machine.transition_to(RunState.REPAIR_EXHAUSTED)
+                    update_run_state(RunState.REPAIR_EXHAUSTED, error_code=last_cat, error_msg=f"Repair exhausted after {max_attempts} attempts: {last_err[:500]}")
                     emit_event("STATUS", f"Pipeline halted after {max_attempts} attempts. Final failure: {last_cat}")
                     return
                 

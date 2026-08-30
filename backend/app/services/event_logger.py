@@ -26,7 +26,7 @@ class BackendEventLogger:
             output=output,
             status=status,
             related_entity_type="run",
-            related_entity_id=self.run_id
+            related_entity_id=str(self.run_id)
         )
         self.db.add(ev)
         self.db.commit()

@@ -41,7 +41,7 @@ def test_2_string_root_cause():
     }
     res = InvestigationResult.model_validate(payload)
     assert res.root_cause.summary == "The variable merchant was not found in the DB repository."
-    assert res.root_cause.service == "payment-service"
+    assert res.root_cause.service == "unknown"
 
 # 3. filesChanged objects
 def test_3_files_changed_objects():

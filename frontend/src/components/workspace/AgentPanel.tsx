@@ -53,8 +53,8 @@ function getAgentContent(stageKey?: string) {
       return {
         action: 'Investigating root cause',
         analysis: 'Comparing runtime evidence with the relevant source location.',
-        output: 'PaymentService.java:82',
-        finding: 'paymentRecord may be null before dereference.',
+        output: 'Root cause location identified in source',
+        finding: 'Defect mechanism isolated from runtime failure evidence.',
         nextAction: 'Generate repair candidate →',
       }
     case '09_patch':
@@ -62,7 +62,7 @@ function getAgentContent(stageKey?: string) {
         action: 'Generating repair candidate',
         analysis: 'Preparing the smallest source change that addresses the verified root cause without modifying unrelated code.',
         output: '1 file changed',
-        finding: 'Repair candidate targets PaymentService.java:82.',
+        finding: 'Repair candidate targets verified root cause location.',
         nextAction: 'Run compatibility checks →',
       }
     case '10_compatibility':

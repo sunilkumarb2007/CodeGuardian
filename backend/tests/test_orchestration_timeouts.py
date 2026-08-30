@@ -1,5 +1,6 @@
 import pytest
 import uuid
+import random
 import httpx
 from datetime import datetime, timezone
 import subprocess
@@ -31,7 +32,7 @@ def mock_run(db_session):
     app = Application(
         id=app_id,
         name="MockApp",
-        environment="test",
+        environment="production",
         status="active",
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc)
@@ -41,9 +42,9 @@ def mock_run(db_session):
     repo = Repository(
         id=str(uuid.uuid4()),
         provider="github",
-        owner="mock",
+        owner=f"mock-{str(uuid.uuid4())[:8]}",
         name="repo",
-        repository_url="https://github.com/mock/repo",
+        repository_url=f"https://github.com/mock-{str(uuid.uuid4())[:8]}/repo",
         default_branch="main",
         access_status="accessible",
         application_id=app_id,
@@ -54,9 +55,9 @@ def mock_run(db_session):
     db_session.flush()
     inc = Incident(
         id=str(uuid.uuid4()),
-        incident_number=1,
-        title="Test",
-        status="open",
+        incident_number=random.randint(1000000, 99999999),
+        title="NullPointerException Test Failure",
+        status="investigating",
         resolution_status="unresolved",
         repository_id=repo.id,
         application_id=app_id,

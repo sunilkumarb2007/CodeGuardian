@@ -657,8 +657,8 @@ export function TestsPanel({ tests, runStatus }: { tests?: CommandResult; runSta
       <div className="p-7 space-y-6">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <Metric label="Test Outcome" value={passed ? 'PASS' : 'FAILED'} accent={passed} />
-          <Metric label="Passed Tests" value="8" />
-          <Metric label="Failed Tests" value="0" />
+          <Metric label="Passed Tests" value={passed ? 'PASS' : '0'} />
+          <Metric label="Failed Tests" value={passed ? '0' : 'FAILED'} />
           <Metric label="Skipped" value="0" />
         </div>
 
@@ -672,7 +672,7 @@ export function TestsPanel({ tests, runStatus }: { tests?: CommandResult; runSta
         <div>
           <p className="eyebrow mb-2">Test Suite Execution Log</p>
           <pre className="p-4 rounded-xl bg-ide-base border border-ide-divider font-mono text-xs text-zinc-300 max-h-[300px] overflow-y-auto whitespace-pre-wrap">
-            {tests?.output || '[INFO] Running com.codeguardian.PaymentServiceTest\n[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.204 s - in com.codeguardian.PaymentServiceTest\n[INFO] \n[INFO] Results:\n[INFO] \n[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0\n[INFO] \n[INFO] ------------------------------------------------------------------------\n[INFO] BUILD SUCCESS\n[INFO] ------------------------------------------------------------------------'}
+            {tests?.output || 'Test suite output will appear here after execution.'}
           </pre>
         </div>
       </div>

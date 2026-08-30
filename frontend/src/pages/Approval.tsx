@@ -90,7 +90,22 @@ export default function Approval() {
     )
   }
 
-  const isAwaitingApproval = run.status === 'waiting_for_approval'
+  const isAwaitingApproval = run.status?.toLowerCase() === 'waiting_for_approval'
+  const hasValidatedPatch = Boolean(
+    run.patch?.id &&
+    (run.patch?.status?.toLowerCase() === 'validated' || run.patch?.status === 'VALIDATED') &&
+    (run.patch?.affectedFiles?.length || run.patch?.file)
+  )
+  const validationPassed = run.validation?.status?.toLowerCase() === 'passed' || (run.validation?.passedCount && run.validation.passedCount >= 6)
+  const canApprove = isAwaitingApproval && hasValidatedPatch && Boolean(validationPassed)
+
+  const replayGate = run.validation?.gates?.find(g => g.name.toLowerCase().includes('replay'))
+  const buildGate = run.validation?.gates?.find(g => g.name.toLowerCase().includes('build'))
+  const testGate = run.validation?.gates?.find(g => g.name.toLowerCase().includes('test') || g.name.toLowerCase().includes('regression'))
+  const replayStatus = replayGate?.passed ? 'PASS' : (replayGate ? 'FAIL' : (validationPassed ? 'PASS' : 'PENDING'))
+  const buildStatus = buildGate?.passed ? 'PASS' : (buildGate ? 'FAIL' : (validationPassed ? 'PASS' : 'PENDING'))
+  const testsStatus = testGate?.passed ? 'PASS' : (testGate ? 'FAIL' : (validationPassed ? 'PASS' : 'PENDING'))
+  const deliveryStatus = canApprove ? 'READY' : 'BLOCKED'
 
   return (
     <Shell>
@@ -109,7 +124,7 @@ export default function Approval() {
               </span>
             </div>
             <p className="text-zinc-400 text-xs font-mono mt-1">
-              Target: <span className="text-zinc-200 font-bold">{run.repository?.name || 'JavaAPICheck'}</span> &middot; Run ID: <span className="text-lime">{runId}</span>
+              Target: <span className="text-zinc-200 font-bold">{run.repository?.name || 'Repository'}</span> &middot; Run ID: <span className="text-lime">{runId}</span>
             </p>
           </div>
 
@@ -137,6 +152,11 @@ export default function Approval() {
             <strong>Action Blocked:</strong> {actionError}
           </div>
         )}
+        {!canApprove && isAwaitingApproval && (
+          <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-300 text-xs font-mono">
+            <strong>Safety Gate Warning:</strong> Approval action is unavailable because this run has not passed all required deterministic validation gates or the patch candidate is invalid.
+          </div>
+        )}
 
         {/* Incident Summary Card */}
         <div className="p-6 rounded-2xl border border-ide-divider bg-ide-panel/80 space-y-4">
@@ -148,20 +168,20 @@ export default function Approval() {
               </h2>
             </div>
             <span className="text-xs font-mono text-red-400 font-bold bg-red-500/10 px-2 py-0.5 rounded border border-red-500/30">
-              500 Internal Server Error
+              {run.incident?.httpStatus ? `HTTP ${run.incident.httpStatus}` : 'Active Incident'}
             </span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 font-mono text-xs">
             <div className="space-y-1 text-zinc-400">
               <p>Title: <span className="text-zinc-200 font-bold">{run.incident?.title || 'Runtime Defect'}</span></p>
-              <p>Service: <span className="text-lime">{run.incident?.service || 'payment-service'}</span></p>
-              <p>Environment: <span className="text-zinc-200 uppercase">production</span></p>
+              <p>Service: <span className="text-lime">{run.incident?.service || 'N/A'}</span></p>
+              <p>Environment: <span className="text-zinc-200 uppercase">{run.incident?.environment || 'production'}</span></p>
             </div>
             <div className="space-y-1 text-zinc-400">
-              <p>Fingerprint: <span className="text-lime">{run.incident?.fingerprint || 'NULL_OBJECT_ACCESS'}</span></p>
-              <p>Target Branch: <span className="text-zinc-200">main</span></p>
-              <p>Safety Status: <span className="text-lime font-bold">100% VERIFIED</span></p>
+              <p>Fingerprint: <span className="text-lime">{run.incident?.fingerprint || run.incident?.errorType || 'ACTIVE_DEFECT'}</span></p>
+              <p>Target Branch: <span className="text-zinc-200">{run.repository?.defaultBranch || 'main'}</span></p>
+              <p>Patch Status: <span className={hasValidatedPatch ? 'text-lime font-bold' : 'text-amber-400 font-bold'}>{run.patch?.status || 'PENDING'}</span></p>
             </div>
           </div>
 
@@ -181,27 +201,29 @@ export default function Approval() {
                 Deterministic Multi-Gate Verification Proof
               </h2>
             </div>
-            <span className="text-xs font-mono text-lime font-bold bg-lime/10 px-2 py-0.5 rounded border border-lime/30">
-              6 / 6 GATES PASSED
+            <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded border ${
+              validationPassed ? 'bg-lime/10 text-lime border-lime/30' : 'bg-red-500/10 text-red-400 border-red-500/30'
+            }`}>
+              {run.validation?.passedCount ?? (validationPassed ? 6 : 0)} / {run.validation?.totalCount ?? 6} GATES PASSED
             </span>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center font-mono">
             <div className="p-3 rounded-xl bg-black/40 border border-ide-divider">
               <span className="text-[10px] text-zinc-400 uppercase block">GHOST REPLAY</span>
-              <span className="text-xs font-bold text-lime mt-1 block">PASS</span>
+              <span className={`text-xs font-bold mt-1 block ${replayStatus === 'PASS' ? 'text-lime' : 'text-red-400'}`}>{replayStatus}</span>
             </div>
             <div className="p-3 rounded-xl bg-black/40 border border-ide-divider">
               <span className="text-[10px] text-zinc-400 uppercase block">SANDBOXED BUILD</span>
-              <span className="text-xs font-bold text-lime mt-1 block">PASS</span>
+              <span className={`text-xs font-bold mt-1 block ${buildStatus === 'PASS' ? 'text-lime' : 'text-red-400'}`}>{buildStatus}</span>
             </div>
             <div className="p-3 rounded-xl bg-black/40 border border-ide-divider">
               <span className="text-[10px] text-zinc-400 uppercase block">REGRESSION TESTS</span>
-              <span className="text-xs font-bold text-lime mt-1 block">PASS</span>
+              <span className={`text-xs font-bold mt-1 block ${testsStatus === 'PASS' ? 'text-lime' : 'text-red-400'}`}>{testsStatus}</span>
             </div>
             <div className="p-3 rounded-xl bg-black/40 border border-ide-divider">
               <span className="text-[10px] text-zinc-400 uppercase block">DELIVERY GATE</span>
-              <span className="text-xs font-bold text-lime mt-1 block">READY</span>
+              <span className={`text-xs font-bold mt-1 block ${deliveryStatus === 'READY' ? 'text-lime' : 'text-amber-400'}`}>{deliveryStatus}</span>
             </div>
           </div>
         </div>
@@ -218,7 +240,7 @@ export default function Approval() {
           </div>
 
           <p className="text-xs text-zinc-400 font-sans">
-            Approving this patch will trigger the CodeGuardian GitHub App to create the verified pull request on <code className="text-lime">{run.repository?.name || 'JavaAPICheck'}</code>, execute post-merge verification, and update production memory.
+            Approving this patch will trigger the CodeGuardian GitHub App to create the verified pull request on <code className="text-lime">{run.repository?.name || 'Repository'}</code>, execute post-merge verification, and update production memory.
           </p>
 
           <div className="flex items-center justify-end gap-3 pt-2">
@@ -231,8 +253,8 @@ export default function Approval() {
             </button>
             <button
               onClick={handleApprove}
-              disabled={actionProcessing || !isAwaitingApproval}
-              className="px-6 py-2.5 rounded-xl bg-lime hover:bg-lime/90 text-black font-bold text-xs font-mono transition-all shadow-[0_0_20px_rgba(198,255,61,0.25)] flex items-center gap-2 disabled:opacity-50"
+              disabled={actionProcessing || !canApprove}
+              className="px-6 py-2.5 rounded-xl bg-lime hover:bg-lime/90 text-black font-bold text-xs font-mono transition-all shadow-[0_0_20px_rgba(198,255,61,0.25)] flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {actionProcessing ? 'Processing...' : '✓ Approve & Merge to Production'}
             </button>

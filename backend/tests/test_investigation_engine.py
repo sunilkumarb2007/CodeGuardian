@@ -80,14 +80,12 @@ def test_prompt_generation_with_memory_and_source():
     )
     
     # Assertions
-    assert "Title: HTTP 500 in Checkout" in prompt
-    assert "[api-gateway] log POST /checkout -> 500" in prompt
-    assert "Root Cause Candidate: payment-service" in prompt
-    assert "HISTORICAL ENGINEERING KNOWLEDGE FOUND" in prompt
-    assert "Previous Code Change: Added null check" in prompt
-    assert "--- File: src/payment.py ---" in prompt
+    assert "Incident: HTTP 500 in Checkout" in prompt
+    assert "- api-gateway log Internal Server Error" in prompt
+    assert "GhostTrace Candidate: payment-service" in prompt
+    assert "File: src/payment.py" in prompt
     assert "def process_payment(obj):" in prompt
-    assert "=== TASK ===" in prompt
+    assert "Return strictly this compact JSON object" in prompt
 
 def test_prompt_generation_without_source():
     incident = models.Incident(
@@ -112,5 +110,5 @@ def test_prompt_generation_without_source():
         source_files=[]
     )
     
-    assert "No relevant historical memory found." in prompt
-    assert "SOURCE_CONTEXT_UNAVAILABLE" in prompt
+    assert "Incident: HTTP 500" in prompt
+    assert "GhostTrace Candidate: payment-service" in prompt

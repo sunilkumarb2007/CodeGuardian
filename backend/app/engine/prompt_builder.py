@@ -73,17 +73,24 @@ class InvestigationPromptBuilder:
             prompt.append(content)
             prompt.append("---")
 
-        # Required Minimal JSON output format
-        target_file = source_files[0].file_path if source_files else "PaymentService.java"
+        # Required Schema-Shaped JSON output template with placeholders ONLY
+        target_file = source_files[0].file_path if source_files else "<repository-relative-file-path>"
         prompt.append("\nReturn strictly this compact JSON object with no wrapping text:")
         prompt.append(f"""{{
-  "root_cause": "Null dereference when merchant is not found in repository",
-  "root_cause_service": "payment-service",
+  "root_cause": "<concise summary of actual failure mechanism based on evidence>",
+  "root_cause_service": "<actual service where defect exists>",
   "affected_file": "{target_file}",
-  "line": 30,
-  "repair_summary": "Add null check for merchant",
-  "diff": "--- a/{target_file}\\n+++ b/{target_file}\\n@@ -24,3 +24,5 @@\\n+        if (merchant == null) {{\\n+            throw new IllegalStateException(\\"Merchant not found\\");\\n+        }}",
+  "line": 1,
+  "repair_summary": "<concise explanation of the fix>",
+  "diff": "--- a/{target_file}\\n+++ b/{target_file}\\n@@ -<start_line>,<count> +<start_line>,<count> @@\\n <context_line>\\n+<added_line>\\n-<removed_line>",
   "confidence": 1.0
 }}""")
+        prompt.append("\nDirectives:")
+        prompt.append("- Do not invent a file name. Use only files present in the supplied source context.")
+        prompt.append("- Do not invent a service name. Derive it from the evidence.")
+        prompt.append("- Do not invent a line number. Derive it from the stack trace and source code.")
+        prompt.append("- Do not infer a repair from the template; derive it strictly from the actual defect.")
+        prompt.append("- Every changed file must be justified by the supplied source context.")
+        prompt.append("- The unified diff must be complete, syntactically valid, and bounded to the affected file.")
 
         return "\n".join(prompt)

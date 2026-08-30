@@ -22,14 +22,11 @@ class FailureEvidenceCollector:
 
     def collect_evidence(self, repository_url: str, repository_id: uuid.UUID, failure_input: Optional[FailureInput] = None) -> str:
         """
-        Creates structured deterministic evidence.
-        Returns the incident ID as string if successful, else 'NO_FAILURE_EVIDENCE' or 'NO_PREPARED_FAILURE'
+        Creates structured deterministic evidence from failure input.
+        Returns the incident ID as string if successful, else 'NO_FAILURE_EVIDENCE'.
         """
-        if "JavaAPICheck" in repository_url and not failure_input:
-            return self._handle_java_api_check_fixture(repository_url, repository_id)
-            
         if not failure_input:
-            logger.info(f"No failure evidence provided for generic repository: {repository_url}")
+            logger.info(f"No failure evidence provided for repository: {repository_url}")
             return "NO_FAILURE_EVIDENCE"
             
         return self._handle_generic_failure(repository_url, repository_id, failure_input)

@@ -115,10 +115,10 @@ class RenderAdapter(IncidentSourceAdapter):
             stack = payload.get("logs") or payload.get("details") or ""
             status_code = payload.get("status_code", 500)
         else:
-            exception = event_type
+            exception = payload.get("exception") or event_type
             message = payload.get("message") or deploy_data.get("status") or f"Render alert: {event_type}"
-            stack = payload.get("logs") or payload.get("details") or ""
-            status_code = payload.get("status_code", 500)
+            stack = payload.get("stackTrace") or payload.get("stack_trace") or payload.get("logs") or payload.get("details") or ""
+            status_code = payload.get("statusCode") or payload.get("status_code", 500)
 
         return NormalizedIncident(
             repository=repo,

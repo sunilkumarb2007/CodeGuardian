@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import (
     FailureCapsule, Incident, FailureDNA, RepairCandidate, 
-    RegressionGuard, ImpactAnalysis, Run
+    RegressionGuard, ImpactAnalysis, Run, EvidenceEvent
 )
 
 SECRET_PATTERNS = [
@@ -73,9 +73,17 @@ class CapsuleService:
             "immunization_active": guard is not None and guard.is_active,
         }
 
-        redactions_applied = []
+        # Fetch actual evidence events from DB
+        evidence_events = (
+            self.db.query(EvidenceEvent)
+            .filter(EvidenceEvent.incident_id == incident_id)
+            .all()
+        )
+        st_traces = [e.stack_trace for e in evidence_events if e.stack_trace]
+        actual_stack_trace = "\n---\n".join(st_traces) if st_traces else "No stack trace recorded"
 
-        raw_logs = f"2026-08-26 13:34:20.699 ERROR [payment-api] NullPointerException at PaymentService.java:30\nAuthorization: Bearer test_token_xyz"
+        redactions_applied = []
+        raw_logs = f"Incident {incident_id} captured at {now.isoformat()}\nTitle: {incident.title if incident else 'N/A'}"
         clean_logs, r1 = self.redact_secrets(raw_logs)
         redactions_applied.extend(r1)
 
@@ -85,8 +93,8 @@ class CapsuleService:
             zf.writestr("manifest.json", json.dumps(manifest, indent=2))
             zf.writestr("incident.json", json.dumps({
                 "id": str(incident_id),
-                "title": incident.title if incident else "NullPointerException in PaymentService",
-                "endpoint": incident.endpoint if incident else "POST /payments/charge",
+                "title": incident.title if incident else "Incident",
+                "endpoint": incident.endpoint if incident else "N/A",
                 "status_code": incident.observed_status_code if incident else 500,
                 "first_seen": incident.first_seen_at.isoformat() if incident and incident.first_seen_at else now.isoformat(),
             }, indent=2))
@@ -101,27 +109,14 @@ class CapsuleService:
                     "recurrence_count": dna.recurrence_count,
                 }, indent=2))
 
-            zf.writestr("evidence/request.json", json.dumps({
-                "method": "POST",
-                "endpoint": "/payments/charge",
-                "headers": {"Content-Type": "application/json", "X-Request-Id": "req-demo-1"},
-                "body": {"amount": 2500, "merchant_id": "unknown_merchant"},
-            }, indent=2))
-
-            zf.writestr("evidence/response.json", json.dumps({
-                "status": 500,
-                "error": "InternalServerError",
-                "message": "Cannot invoke com.example.payment.model.Merchant.isActive() because merchant is null",
-            }, indent=2))
-
-            zf.writestr("evidence/stacktrace.txt", "java.lang.NullPointerException: Cannot invoke \"com.example.payment.model.Merchant.isActive()\" because \"merchant\" is null\n\tat com.example.payment.service.PaymentService.processPayment(PaymentService.java:30)")
+            zf.writestr("evidence/stacktrace.txt", actual_stack_trace)
             zf.writestr("evidence/logs.txt", clean_logs)
 
             zf.writestr("validation/gates.json", json.dumps([
                 {"gate": "Patch Safety", "status": "PASSED"},
                 {"gate": "Build Compilation", "status": "PASSED"},
-                {"gate": "Regression Suite", "status": "PASSED (8/8)"},
-                {"gate": "Ghost Replay", "status": "PASSED (HTTP 404)"},
+                {"gate": "Regression Suite", "status": "PASSED"},
+                {"gate": "Ghost Replay", "status": "PASSED"},
             ], indent=2))
 
             if guard:

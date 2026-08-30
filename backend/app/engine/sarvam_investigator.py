@@ -210,17 +210,18 @@ class SarvamInvestigator(InvestigatorProvider):
                                             "Return ONLY a minimal, complete JSON object. "
                                             "Do NOT include markdown, preamble, or commentary. "
                                             "Do NOT repeat the repository analysis. "
-                                            "The unified diff must be complete and valid.\n\n"
+                                            "The unified diff must be complete and valid for the affected file.\n\n"
                                             "Return strictly this minimal JSON structure:\n"
                                             "{\n"
-                                            '  "root_cause": "Defensive null check needed in PaymentService",\n'
-                                            '  "root_cause_service": "payment-service",\n'
-                                            '  "affected_file": "payment-service/src/main/java/com/codeguardian/paymentservice/PaymentService.java",\n'
-                                            '  "line": 30,\n'
-                                            '  "repair_summary": "Add null check",\n'
-                                            '  "diff": "--- a/payment-service/src/main/java/com/codeguardian/paymentservice/PaymentService.java\\n+++ b/payment-service/src/main/java/com/codeguardian/paymentservice/PaymentService.java\\n@@ -24,3 +24,5 @@\\n+        if (merchant == null) {\\n+            throw new IllegalStateException(\\"Merchant not found\\");\\n+        }",\n'
+                                            '  "root_cause": "<actual root cause summary>",\n'
+                                            '  "root_cause_service": "<actual service name>",\n'
+                                            '  "affected_file": "<actual file path from context>",\n'
+                                            '  "line": 1,\n'
+                                            '  "repair_summary": "<concise fix summary>",\n'
+                                            '  "diff": "--- a/<file>\\n+++ b/<file>\\n@@ -1,1 +1,2 @@\\n+<fix>",\n'
                                             '  "confidence": 1.0\n'
-                                            "}"
+                                            "}\n\n"
+                                            f"Investigation Context:\n{prompt[:1500]}"
                                         )
                                     }
                                 ],

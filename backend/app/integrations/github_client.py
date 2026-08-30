@@ -33,8 +33,8 @@ class GitHubClient:
             logger.info("GitHubClient: Authenticated using GitHub App installation token.")
             return
 
-        # 2. Fall back to PAT (development/fallback)
-        if settings.github_token:
+        # 2. Fall back to PAT (development/testing only, disabled in production)
+        if settings.app_env != "production" and settings.github_token:
             self.token = settings.github_token
             self._auth_mode = "PAT"
             logger.info("GitHubClient: Falling back to GITHUB_TOKEN (development-only PAT).")
@@ -42,7 +42,7 @@ class GitHubClient:
 
         self.token = None
         self._auth_mode = "UNAUTHENTICATED"
-        logger.warning("GitHubClient: No GitHub App credentials or GITHUB_TOKEN found.")
+        logger.warning("GitHubClient: No GitHub App credentials or valid GITHUB_TOKEN found.")
 
     def get_auth_mode(self) -> str:
         return self._auth_mode
@@ -79,7 +79,10 @@ class GitHubClient:
         # Look for private key
         key_bytes = None
         if settings.github_app_private_key:
-            key_bytes = settings.github_app_private_key.encode('utf-8')
+            raw_key = settings.github_app_private_key
+            if "\\n" in raw_key and "\n" not in raw_key:
+                raw_key = raw_key.replace("\\n", "\n")
+            key_bytes = raw_key.strip().encode('utf-8')
         elif settings.github_app_private_key_path and os.path.exists(settings.github_app_private_key_path):
             try:
                 with open(settings.github_app_private_key_path, 'rb') as f:

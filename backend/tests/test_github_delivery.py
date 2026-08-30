@@ -37,7 +37,7 @@ def test_unvalidated_patch_blocked(mock_db, mock_incident, mock_patch):
     
     with pytest.raises(ValueError) as exc:
         service.run_delivery(mock_incident.id, mock_patch.id)
-    assert "UNVALIDATED_PATCH_CANNOT_BE_DELIVERED" in str(exc.value)
+    assert "DELIVERY_BLOCKED" in str(exc.value)
 
 def test_unsafe_path_blocked(mock_db, mock_incident, mock_patch):
     service = DeliveryService(mock_db)

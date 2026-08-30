@@ -5,7 +5,7 @@ from uuid import UUID
 
 class RootCauseAnalysis(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
-    service: str = Field(default="payment-service", description="The service or component where the root cause exists.")
+    service: str = Field(default="unknown", description="The service or component where the root cause exists.")
     summary: str = Field(description="A concise summary of the engineering failure mechanism.")
     affected_file: Optional[str] = Field(None, description="The specific file path containing the defect.")
     location: Optional[str] = Field(None, description="The specific class and method.")
@@ -17,7 +17,7 @@ class RootCauseAnalysis(BaseModel):
     def normalize_root_cause(cls, data: Any) -> Any:
         if isinstance(data, str):
             return {
-                "service": "payment-service",
+                "service": "unknown",
                 "summary": data,
                 "confidence": 1.0
             }
@@ -27,9 +27,9 @@ class RootCauseAnalysis(BaseModel):
                 or data.get("description")
                 or data.get("root_cause")
                 or data.get("details")
-                or "Null object dereference"
+                or "Runtime failure"
             )
-            service = data.get("service") or data.get("component") or "payment-service"
+            service = data.get("service") or data.get("component") or data.get("root_cause_service") or "unknown"
             affected_file = (
                 data.get("affected_file")
                 or data.get("affectedFile")
@@ -40,7 +40,7 @@ class RootCauseAnalysis(BaseModel):
             if location and affected_file and ":" not in str(location):
                 location = f"{affected_file}:{location}"
             return {
-                "service": service,
+                "service": str(service),
                 "summary": str(summary),
                 "affected_file": affected_file,
                 "location": str(location) if location else None,
@@ -102,13 +102,11 @@ class PatchCandidateModel(BaseModel):
         for f in raw_files:
             if isinstance(f, dict):
                 p = f.get("path") or f.get("file") or f.get("name") or str(f)
-                cleaned_files.append(str(p))
+                if p:
+                    cleaned_files.append(str(p))
             elif f:
                 cleaned_files.append(str(f))
         
-        if not cleaned_files:
-            cleaned_files = ["payment-service/src/main/java/com/codeguardian/paymentservice/PaymentService.java"]
-            
         # 2. Normalize diff
         diff = (
             data.get("diff")
@@ -119,14 +117,14 @@ class PatchCandidateModel(BaseModel):
             or data.get("fix")
             or ""
         )
-        target_path = cleaned_files[0]
         
-        # If diff is a raw snippet without unified diff headers, wrap into standard unified diff
-        if diff and not ("@@" in diff and "---" in diff):
+        # If diff is a raw snippet without unified diff headers and a target file is known, wrap into unified diff
+        if diff and cleaned_files and not ("@@" in diff and "---" in diff):
+            target_path = cleaned_files[0]
             diff_lines = [
                 f"--- a/{target_path}",
                 f"+++ b/{target_path}",
-                "@@ -24,3 +24,5 @@",
+                "@@ -1,1 +1,2 @@",
             ]
             for line in diff.strip().splitlines():
                 if not line.startswith("+") and not line.startswith("-") and not line.startswith(" "):
@@ -140,8 +138,9 @@ class PatchCandidateModel(BaseModel):
             data.get("explanation")
             or data.get("description")
             or data.get("summary")
+            or data.get("repair_summary")
             or data.get("reason")
-            or "Defensive null guard applied"
+            or "Automated code patch"
         )
         
         return {
@@ -172,7 +171,7 @@ class InvestigationResult(BaseModel):
             
         # If root_cause is string at top-level
         rc = data.get("root_cause") or data.get("rootCause")
-        service_name = data.get("root_cause_service") or data.get("service") or "payment-service"
+        service_name = data.get("root_cause_service") or data.get("service") or "unknown"
         affected_file = data.get("affected_file") or data.get("file_path") or data.get("affectedFile")
         line_no = data.get("line") or data.get("line_number")
         
@@ -195,7 +194,7 @@ class InvestigationResult(BaseModel):
             data["patch_candidate"] = {
                 "files_changed": [affected_file] if affected_file else [],
                 "diff": data.get("diff") or data.get("snippet") or data.get("fix"),
-                "explanation": data.get("repair_summary") or data.get("description") or "Automated defensive fix"
+                "explanation": data.get("repair_summary") or data.get("description") or "Automated code patch"
             }
             
         return data

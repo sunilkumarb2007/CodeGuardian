@@ -78,7 +78,7 @@ export function FailureDetectionPanel({ run }: { run?: Run }) {
           caption="Captured runtime error, endpoint telemetry, and deterministic reproducibility proof."
           right={
             <span className="pill border-signal-pink/60 text-signal-pink font-bold">
-              HTTP {incident?.httpStatus ?? 500}
+              {incident?.httpStatus ? `HTTP ${incident.httpStatus}` : 'ACTIVE DEFECT'}
             </span>
           }
         />
@@ -89,28 +89,28 @@ export function FailureDetectionPanel({ run }: { run?: Run }) {
                 ACTIVE DEFECT DETECTED
               </span>
               <span className="font-mono text-xs text-zinc-400">
-                Fingerprint: <span className="text-white font-semibold">{failureDna?.fingerprint || incident?.fingerprint || 'NULL_OBJECT_ACCESS'}</span>
+                Fingerprint: <span className="text-white font-semibold">{failureDna?.fingerprint || incident?.fingerprint || 'UNCLASSIFIED'}</span>
               </span>
             </div>
             <h3 className="font-display text-2xl font-bold text-white tracking-tight">
-              {incident?.errorType || 'NullPointerException'} in {incident?.service || run?.repository?.name || 'PaymentService'}
+              {incident?.errorType || 'Runtime Defect'}{incident?.service ? ` in ${incident.service}` : ''}
             </h3>
             <p className="text-sm text-zinc-300 leading-relaxed">
-              {incident?.summary || 'A null dereference occurred during merchant attribute resolution on incoming charge payload.'}
+              {incident?.summary || 'Active defect detected from failure evidence telemetry.'}
             </p>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <Metric label="Error Type" value={incident?.errorType || 'NullPointerException'} accent />
-            <Metric label="Failing Endpoint" value={incident?.endpoint || '/payments/charge'} />
-            <Metric label="Failing Service" value={incident?.service || 'payment-service'} />
-            <Metric label="Target Source" value={run?.patch?.file || 'PaymentService.java:30'} />
+            <Metric label="Error Type" value={incident?.errorType || incident?.title || 'Runtime Error'} accent />
+            <Metric label="Failing Endpoint" value={incident?.endpoint || 'N/A'} />
+            <Metric label="Failing Service" value={incident?.service || 'N/A'} />
+            <Metric label="Target Source" value={run?.patch?.file || 'N/A'} />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-ide-divider text-xs font-mono">
             <div>
               <span className="text-zinc-500 uppercase block mb-1">Request ID / Trace</span>
-              <span className="text-zinc-200 font-semibold">{incident?.requestId || 'req_live_4b4d0595'}</span>
+              <span className="text-zinc-200 font-semibold">{incident?.requestId || 'N/A'}</span>
             </div>
             <div>
               <span className="text-zinc-500 uppercase block mb-1">Detection Source</span>

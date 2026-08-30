@@ -95,7 +95,9 @@ class RunLock:
                 self._heartbeat_thread.start()
             return acquired
         else:
-            return self._local_lock.acquire(blocking=blocking, timeout=timeout)
+            if not blocking:
+                return self._local_lock.acquire(blocking=False)
+            return self._local_lock.acquire(blocking=True, timeout=timeout)
 
     def release(self):
         if self.redis_client:
